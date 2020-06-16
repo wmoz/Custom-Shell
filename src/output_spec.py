@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 #
 # This file contains definitions that describe the output of your shell.
 #
@@ -10,8 +8,14 @@
 # the shell executable.
 shell = "./cush"
 
-# the prompt printed by your shell
+# the prompt printed by your shell, as a regular expression
 prompt = "cush>"
+
+# change your prompt once you have customized your shell.
+# Here's an example
+import getpass
+if getpass.getuser() == "gback":
+    prompt = "<[^@]*@[^>]*>\$"
 
 #
 # a regexp matching the message printed when a job is sent into the background
@@ -26,7 +30,7 @@ bgjob_regex = "\[(\d+)\] (\d+)"
 job_status_regex =  "\[(\d+)\].?\s+(\S+)\s+\((.+?)\)\r\n"
 
 #
-# job status messages
+# job status messages your shell prints
 #
 jobs_status_msg = {
     'stopped' : "Stopped",
@@ -50,4 +54,4 @@ builtin_commands = {
 # Uncomment this line if you like stdriver.py to keep a log of everything
 # input and output to the pty in file 'log.txt'
 #
-# logfile=open("log.txt", "w")
+#logfile=open("log.txt", "w")

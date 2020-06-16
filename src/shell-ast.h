@@ -11,8 +11,6 @@ struct ast_command_line;
 /* A command line may contain multiple pipelines. */
 struct ast_command_line {
     struct list/* <ast_pipeline> */ pipes;        /* List of pipelines */
-
-    /* Add additional fields here if needed. */
 };
 
 /* A pipeline is a list of one or more commands. 

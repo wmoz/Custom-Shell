@@ -6,9 +6,9 @@ would be bad process group management, and not giving
 proper foreground group to terminal.
 '''
 
-from testutil import *
+from testutils import *
 from tempfile import mkstemp
-
+import time
 
 setup_tests()
    
@@ -80,6 +80,14 @@ expect_prompt()
 
 run_builtin('kill', str(job.id))
 expect_prompt()
+
+sendline('sleep 6 | sleep 4 | sleep 2 &')
+expect_prompt()
+for i in range(3):
+    run_builtin('jobs')
+    job = parse_job_line()
+    assert job.command.count("sleep") == 3
+    time.sleep(2)
 
 test_success()
 

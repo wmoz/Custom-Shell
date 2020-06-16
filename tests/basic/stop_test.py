@@ -9,54 +9,32 @@
 #	stop, sleep
 #
 
-import sys, imp, atexit
-import pexpect, shellio, signal, time, os, re, proc_check
+import sys, imp, atexit, pexpect, proc_check, signal, time, threading
+from testutils import *
 
-#Ensure the shell process is terminated
-def force_shell_termination(shell_process):
-	c.close(force=True)
-
-#pulling in the regular expression and other definitions
-definitions_scriptname = sys.argv[1]
-def_module = imp.load_source('', definitions_scriptname)
-logfile = None
-if hasattr(def_module, 'logfile'):
-    logfile = def_module.logfile
-
-# spawn an instance of the shell
-c = pexpect.spawn(def_module.shell, drainpty=True, logfile=logfile)
-atexit.register(force_shell_termination, shell_process=c)
-
-# set timeout for all following 'expect*' calls to 2 seconds
-c.timeout = 2
+console = setup_tests()
 
 # ensure that shell prints expected prompt
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
-
+expect_prompt()
 
 # run a command
-c.sendline("sleep 30 &")
+sendline("sleep 30 &")
 
 # pull the jobid and pid from the background process printout
-(jobid, pid) = shellio.parse_regular_expression(c, def_module.bgjob_regex)
+(jobid, pid) = parse_bg_status()
 
 # ensure that the shell prints the expected prompt
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
-
+expect_prompt("Shell did not print expected prompt (2)")
 
 #The job needs to be running when we call stop
-proc_check.count_children_timeout(c, 1, 1)
+proc_check.count_children_timeout(console, 1, 1)
 
 # send the stop command to the process
-c.sendline(def_module.builtin_commands['stop'] % jobid)
+run_builtin('stop', jobid)
 
-#Ensure that sleep has enough time to stop before we read its
+#Ensure that sleep has some time to stop before we read its
 #/proc/ pid /stat file.
 time.sleep(.5)
-
-
 
 #Ensure that sleep is now stopped in the background, and is not
 #the foreground process.
@@ -65,12 +43,10 @@ assert not proc_check.check_pid_fgpgrp(pid), \
 assert proc_check.check_pid_status(pid, 'T'), 'Error: process not stopped'
 
 #check the prompt prints
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
+expect_prompt("Shell did not print expected prompt (3)")
 
 
+sendline("exit");
+expect_exact("exit\r\n", "Shell output extraneous characters")
 
-c.sendline("exit");
-assert c.expect_exact("exit\r\n") == 0, "Shell output extraneous characters"
-
-
-shellio.success()
+test_success()

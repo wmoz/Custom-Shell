@@ -1,5 +1,4 @@
-#!/usr/bin/python
-from testutil import *
+from testutils import *
 from tempfile import mkstemp
 
 setup_tests()
@@ -50,5 +49,20 @@ sendline('echo and you append >> {0}'.format(tmpfile))
 expect_prompt()
 with open(tmpfile) as fd:
     assert 'now I create the data\nand you append' == fd.read().strip()
+
+#
+# test that the shell can redirect both stdout and stderr
+#
+os.unlink(tmpfile)
+exe = make_test_program(open(os.path.dirname(__file__) + "/writetostderr.c").read())
+sendline('{0} >& {1}'.format(exe, tmpfile))
+expect_prompt()
+os.unlink(exe)
+
+with open(tmpfile) as fd:
+    content = fd.read()
+    assert 'stderr\nstdout\n' == content
+
+os.unlink(tmpfile)
 
 test_success()

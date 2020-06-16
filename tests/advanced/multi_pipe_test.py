@@ -1,46 +1,31 @@
-#!/usr/bin/python
-#
-# Block header comment
-#
-#
-import sys, imp, atexit
-import pexpect, shellio, signal, time, os, re, proc_check
+from testutils import *
 
-#Ensure the shell process is terminated
-def force_shell_termination(shell_process):
-	c.close(force=True)
-
-#pulling in the regular expression and other definitions
-definitions_scriptname = sys.argv[1]
-def_module = imp.load_source('', definitions_scriptname)
-logfile = None
-if hasattr(def_module, 'logfile'):
-    logfile = def_module.logfile
-
-#spawn an instance of the shell
-c = pexpect.spawn(def_module.shell, drainpty=True, logfile=logfile)
-atexit.register(force_shell_termination, shell_process=c)
-
+setup_tests()
 
 # Test a really long pipeline
 # Cat acts as the identity function for pipes
 
-c.sendline("echo hi | cat | cat | cat | cat | cat | cat | cat")
-assert c.expect_exact("hi\r\n") == 0, "multiple cats didn't work"
+sendline("echo hi | cat | cat | cat | cat | cat | cat | cat")
+expect_exact("hi\r\n", "multiple cats didn't work")
 
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
+expect_prompt()
+
+sendline("echo hi | cat | cat | cat | cat | cat | cat | cat | tr h b | cat")
+expect_exact("bi\r\n", "multiple cats with a tr didn't work")
+
+expect_prompt("Shell did not print expected prompt (2)")
 
 # Test multiple substitutions through pipes
 
-c.sendline("echo hello how are you | sed s/how/who/ | sed s/are/am/ | sed s/you/I/")
-assert c.expect_exact("hello who am I\r\n") == 0, "Sed didn't work"
+sendline("echo hello how are you | sed s/how/who/ | sed s/are/am/ | sed s/you/I/")
+expect_exact("hello who am I\r\n", "Sed didn't work")
 
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
+expect_prompt("Shell did not print expected prompt (3)")
 
 # Reverse a string twice to get back the original
-c.sendline("echo string | rev | rev ")
-assert c.expect_exact("string\r\n") == 0, "Reverse twice didn't return string"
+sendline("echo string | rev | rev ")
+expect_exact("string\r\n", "Reverse twice didn't return string")
 
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
+expect_prompt("Shell did not print expected prompt (4)")
 
-shellio.success()
+test_success()

@@ -38,24 +38,23 @@ basic_test_file = "basic.tst"
 advanced_test_file = "advanced.tst"
 reduced_test_file = "reduced.tst"
 testfilter = None
+list_tests = False
 
 def usage():
     print """
 Usage: python stdriver.py [options] [tests1.tst tests2.tst] ... 
-    -m              Run milestone tests 
-    -p plugin_dir   Run plugins from the supplied directory
-    -b              Run basic tests
-    -a              Run advanced tests
+    -b              Include basic tests
+    -a              Include advanced tests
     -v              Verbose 
     -h              Show help 
     -o outputspec   Run using this output spec file
     -t testname     Run only tests whose names contains 'testname'
     -B directory    Set test base (default %s)
-    -l              List available tests (not implemented)
+    -l              List available tests in test set
     """ % (test_base)
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "hvmrbo:p:t:B:a", \
+    opts, args = getopt.getopt(sys.argv[1:], "hvmbo:p:t:B:al", \
         ["help", "outputspec=", "test="])
 except getopt.GetoptError, err:
     # print help information and exit:
@@ -71,19 +70,16 @@ for o, a in opts:
         sys.exit()
     elif o in ("-t", "--test"):
         testfilter = a
+    elif o in ("-l"):
+        list_tests = True
     elif o in ("-B"):
         test_base = a
     elif o in ("-m"):
-        args = ["%s/%s" % (test_base, milestone_test_file)]
+        args += ["%s/%s" % (test_base, milestone_test_file)]
     elif o in ("-b"):
-        args = ["%s/%s" % (test_base, basic_test_file)]
+        args += ["%s/%s" % (test_base, basic_test_file)]
     elif o in ("-a"):
-        args = ["%s/%s" % (test_base, advanced_test_file)]
-    elif o in ("-r"):
-        #args = [test_base + reduced_test_file]
-        print "-r is no longer allowed"
-        usage()
-        sys.exit()
+        args += ["%s/%s" % (test_base, advanced_test_file)]
     elif o in ("-p"):
         plugin_directory = a
     elif o in ("-o"):
@@ -140,6 +136,13 @@ for testlist_filename in args:
     testlist_file.close()
 
 # print full_testlist
+if list_tests:
+    for testset in full_testlist:
+        print testset['name']
+        for (points, testname) in testset['tests']:
+            print ("{} pts {}".format(points, testname))
+
+    sys.exit()
 
 process_list = []
 
@@ -158,7 +161,9 @@ for testset in full_testlist:
         # augment PYTHONPATH so that our own version of pexpect and shellio
         # are picked up.
         augmented_env = dict(os.environ)
-        augmented_env['PYTHONPATH'] = script_dir + "/../pexpect-dpty/"
+        augmented_env['PYTHONPATH'] = ":".join([
+            script_dir + "/../pexpect-dpty/", 
+            script_dir])
         
         # run test
         child_process = subprocess.Popen(["python2", testset['dir'] + testname, \

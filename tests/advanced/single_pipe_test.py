@@ -1,5 +1,5 @@
 #!/usr/bin/python
-from testutil import *
+from testutils import *
 
 setup_tests()
 
@@ -27,7 +27,7 @@ will fail.
 '''
 
 sendline('head -c 1000000 /dev/urandom | wc -c')
-expect('100000', message)
+expect('1000000', message)
 expect_prompt(message)
 
 message = '''Test that file descriptors are not leaked into child
@@ -38,7 +38,6 @@ test will fail.
 sendline('sleep 100 | sleep 100 &')
 job = parse_bg_status()
 
-# The given shell code leaves fd 3 open. This should be fixed (marked as clo_exec)
 assert_correct_fds(job.pid, message)
 expect_prompt()
 

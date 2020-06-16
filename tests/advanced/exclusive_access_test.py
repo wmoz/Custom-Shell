@@ -1,4 +1,3 @@
-#!/usr/bin/python
 """
 Test for 'exclusive access' of the terminal by
 playing with vim and nano.
@@ -8,7 +7,7 @@ then some background and job control with exclusive access
 to make sure you maintain proper terminal state.
 """
 
-from testutil import *
+from testutils import *
 from tempfile import mkstemp
 setup_tests()
 

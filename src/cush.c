@@ -196,6 +196,13 @@ sigchld_handler(int sig, siginfo_t *info, void *_ctxt)
  *
  * If a process exited, it must find the job to which it
  * belongs and decrement num_processes_alive.
+ *
+ * However, not that it is not safe to call delete_job
+ * in handle_child_status because wait_for_job assumes that
+ * even jobs with no more num_processes_alive haven't been
+ * deallocated.  You should postpone deleting completed
+ * jobs from the job list until when your code will no
+ * longer touch them.
  */
 static void
 wait_for_job(struct job *job)

@@ -127,8 +127,7 @@ def count_children_timeout(pexpect_mod, num_children_expected, timeout = -1):
 					pid = int(grps.group(1))
 					ppid = int(grps.group(2))
 					
-					if ppid == pexpect_mod.pid and \
-											children_found.count(pid) == 0:
+					if ppid == pexpect_mod.pid and children_found.count(pid) == 0:
 						num_children_found = num_children_found + 1
 						children_found.append(pid)
 				except:
@@ -146,6 +145,7 @@ def count_children_timeout(pexpect_mod, num_children_expected, timeout = -1):
 			'ERROR:  Fewer children found in process than expected'
 	assert num_children_found == num_children_expected, \
 			'ERROR:  More children found in process than expected'
+        return children_found
 
 def wait_until_child_is_in_foreground(pexpect_mod, timeout = -1):
 

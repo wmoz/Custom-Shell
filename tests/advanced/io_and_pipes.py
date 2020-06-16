@@ -1,5 +1,4 @@
-#!/usr/bin/python
-from testutil import *
+from testutils import *
 from tempfile import mkstemp
 
 setup_tests()
@@ -21,6 +20,8 @@ os.unlink(tmpfile)
 tmpfile = '/tmp/{0}.{1}.txt'.format(int(time.time() * 1000),
                                     os.getuid())
 
+# this test tends to fail if the parent retains pipe file descriptors
+# because 'wc' then doesn't exit with head exits and close the pipe
 sendline('yes test | head -n 3 | wc -l > {0}'.format(tmpfile))
 expect_prompt()
 with open(tmpfile) as fd:

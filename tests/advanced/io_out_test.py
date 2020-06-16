@@ -1,5 +1,4 @@
-#!/usr/bin/python
-from testutil import *
+from testutils import *
 from tempfile import mkstemp
 
 setup_tests()
@@ -45,7 +44,6 @@ test will fail.
 sendline('sleep 100 > /dev/null &')
 job = parse_bg_status()
 
-# The given shell code leaves fd 3 open. This should be fixed (marked as clo_exec)
 assert_correct_fds(job.pid, message)
 
 os.kill(int(job.pid), signal.SIGKILL)

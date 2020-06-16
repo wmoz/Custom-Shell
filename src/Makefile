@@ -5,7 +5,7 @@ LDFLAGS=
 LDLIBS=-ll -lreadline
 # The use of -Wall, -Werror, and -Wmissing-prototypes is mandatory 
 # for this assignment
-CFLAGS=-Wall -Werror -Wmissing-prototypes -g
+CFLAGS=-Wall -Werror -Wmissing-prototypes -g -O2
 #YFLAGS=-v
 YACC=bison
 
@@ -17,7 +17,7 @@ default: cush
 $(LIB_OBJECTS) : $(HEADERS)
 
 # build scanner and parser
-shell-grammar.o: shell-grammar.y shell-grammar.l
+shell-grammar.o: shell-grammar.y shell-grammar.l $(HEADERS)
 	$(LEX) $(LFLAGS) $*.l
 	$(YACC) $(YFLAGS) $<
 	$(CC) -Dlint -c -o $@ $(CFLAGS) $*.tab.c

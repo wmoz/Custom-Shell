@@ -21,51 +21,31 @@
 # [jobid] pid
 #
 
-import sys, imp, atexit
-import pexpect, shellio, signal, time, os, re, proc_check
+import sys, imp, atexit, pexpect, proc_check, signal, time, threading
+from testutils import *
 
+console = setup_tests()
 
-#Ensure the shell process is terminated
-def force_shell_termination(shell_process):
-	c.close(force=True)
-
-# pulling in the regular expression and other definitions
-definitions_scriptname = sys.argv[1]
-def_module = imp.load_source('', definitions_scriptname)
-logfile = None
-if hasattr(def_module, 'logfile'):
-    logfile = def_module.logfile
-
-# spawn an instance of the shell
-c = pexpect.spawn(def_module.shell, drainpty=True, logfile=logfile)
-atexit.register(force_shell_termination, shell_process=c)
-
-# set timeout for all following 'expect*' calls to 2 seconds
-c.timeout = 2
-
-# ensure that the shell prints the expected prompt
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
-
+# ensure that shell prints expected prompt
+expect_prompt()
 
 # run a sleep command for enough time to allow the prompt to return to the shell
-c.sendline("sleep 3 &")
+sendline("sleep 2 &")
 
 # parse the jobid and pid output
-(jobid, pid) = shellio.parse_regular_expression(c, def_module.bgjob_regex)
+(jobid, pid) = parse_bg_status()
 
 # ensure that the shell prints the expected prompt within a reasonable time
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
+expect_prompt("Shell did not print expected prompt (2)")
 
 # The job needs to be running when it prints the prompt so that when it dies we can see if it reaps it
-# If it takes more than 3 seconds to give the prompt back to the user after typing in sleep 3 & then 
+# If it takes more than 2 seconds to give the prompt back to the user after typing in sleep 2 & then 
 # the shell should be deemed much too slow anyways and will fail the test
-# we do not expect 3 seconds to be a time student shells will come close to at all.
-proc_check.count_children_timeout(c, 1, 1)
+# we do not expect 2 seconds to be a time student shells will come close to at all.
+proc_check.count_children_timeout(console, 1, 1)
 
-
-# sleep for enough time to ensure that the sleep program has terminated and should have been reaped
-time.sleep(4.5)
+# sleep for long enough to ensure that the sleep program has terminated and should have been reaped
+time.sleep(3.5)
 
 # check the proc file that the process has actually been reaped
 # the proc file should not exist once it has been reaped
@@ -75,13 +55,15 @@ time.sleep(4.5)
 assert not os.path.exists("/proc/" + pid + "/stat"), 'the process was not \
 reaped'
 
+dne = "/askdjfhalsdhjlajksdhflas"
+sendline(dne)
+console.ignorecase = True
+expect(dne)
+expect('no such file or directory')
 
-# end the shell program by sending it an end-of-file character
-c.sendline("exit");
+sendline("exit");
 
 # ensure that no extra characters are output after exiting
-assert c.expect_exact("exit\r\n") == 0, "Shell output extraneous characters"
+expect_exact("exit\r\n", "Shell output extraneous characters")
 
-
-# the test was successful
-shellio.success()
+test_success()

@@ -9,156 +9,115 @@
 #	jobs, ctrl-z control, ctrl-c control, sleep, fg, clear
 #
 
-import sys, imp, atexit
+import sys, imp, atexit, pexpect, proc_check, signal, time, threading
+from testutils import *
 
-import pexpect, shellio, signal, time, os, re, proc_check
-
-#Ensure the shell process is terminated
-def force_shell_termination(shell_process):
-	c.close(force=True)
-
-#pulling in the regular expression and other definitions
-definitions_scriptname = sys.argv[1]
-def_module = imp.load_source('', definitions_scriptname)
-logfile = None
-if hasattr(def_module, 'logfile'):
-    logfile = def_module.logfile
-
-# spawn an instance of bash.  PS1 is the env variable from which bash
-# draws its prompt
-c = pexpect.spawn(def_module.shell, drainpty=True, logfile=logfile)
-atexit.register(force_shell_termination, shell_process=c)
-
-# set timeout for all following 'expect*' calls to 2 seconds
-c.timeout = 2
+console = setup_tests()
 
 # ensure that shell prints expected prompt
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
-
+expect_prompt()
 
 #check that the jobs list outputs nothing
-c.sendline(def_module.builtin_commands['jobs'])
+run_builtin('jobs')
 
 # ensure that shell prints expected prompt
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
-
+expect_prompt("Shell did not print expected prompt (2)")
 
 # run a command
-c.sendline("sleep 30")
+sendline("sleep 30")
 
 #Wait until the sleep command takes over the foreground
-proc_check.wait_until_child_is_in_foreground(c)
+proc_check.wait_until_child_is_in_foreground(console)
 
 #send the job to the background
-c.sendcontrol('z')
+sendcontrol('z')
 
 # ensure that the shell prints the expected prompt
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
-
+expect_prompt("Shell did not print expected prompt (3)")
 
 #Request the jobs list
-c.sendline(def_module.builtin_commands['jobs'])
+run_builtin('jobs')
 
 #Check the jobs list
-(jobid, status_message, command_line) = shellio.parse_regular_expression(c, def_module.job_status_regex)
-assert status_message == def_module.jobs_status_msg['stopped'] and \
+(jobid, status_message, command_line) = parse_job_line()
+assert status_message == 'stopped' and \
 		'sleep 30' in command_line, "Job status not properly displayed"
 
 # ensure that the shell prints the expected prompt
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
-
+expect_prompt("Shell did not print expected prompt (4)")
 
 #Add another job
-c.sendline("sleep 300 &")
+sendline("sleep 300 &")
 
 # pick up the background job output
-(jobid, pid) = shellio.parse_regular_expression(c, def_module.bgjob_regex)
+(jobid, pid) = parse_bg_status()
 
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
+expect_prompt("Shell did not print expected prompt (5)")
 
 #Both jobs need to be active and running before the jobs command is
 #sent.  if this isn't so, the test is failed.
-proc_check.count_active_children(c, 2)
-
-
+proc_check.count_active_children(console, 2)
 
 #Recheck the jobs list
-c.sendline(def_module.builtin_commands['jobs'])
+run_builtin('jobs')
 
 #Check the jobs list
-(jobid, status_message, command_line) = \
-            shellio.parse_regular_expression(c, def_module.job_status_regex) 
-(jobid2, status_message2, command_line2) = \
-            shellio.parse_regular_expression(c, def_module.job_status_regex)
+(jobid, status_message, command_line) = parse_job_line()
+(jobid2, status_message2, command_line2) = parse_job_line()
 
 # Check that the jobs list contains both jobs in some order
 
 #check the first possible order of job statuses, and then
 #the second possible order.
-assert  (status_message == def_module.jobs_status_msg['stopped'] and \
+assert  (status_message == 'stopped' and \
 		'sleep 30' in command_line and \
 		\
-		status_message2 == def_module.jobs_status_msg['running'] and \
+		status_message2 == 'running' and \
 		'sleep 300' in command_line2) \
 		\
 		or \
 		\
-		(status_message2 == def_module.jobs_status_msg['stopped'] and \
+		(status_message2 == 'stopped' and \
 		'sleep 30' in command_line2 and \
 		\
-		status_message == def_module.jobs_status_msg['running'] and \
+		status_message == 'running' and \
 		'sleep 300' in command_line), "Job status not properly displayed"
 
 # Check that there are no duplicate job id's.
 assert jobid != jobid2, "Duplicate job id's."
 
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
-
+expect_prompt("Shell did not print expected prompt (6)")
 
 #bring the second sleep command back to foreground 
 #so that we can end it with ctrl-c
-c.sendline(def_module.builtin_commands['fg'] % jobid2)
+run_builtin('fg', jobid2)
 
 #Wait until the sleep command takes over the foreground
-proc_check.wait_until_child_is_in_foreground(c)
+proc_check.wait_until_child_is_in_foreground(console)
 
 #ctrl-c to close the process
-c.sendintr()
-
-
+sendintr()
 
 #clear any printout of the old job that was just killed by ctrl-c
-c.sendline(def_module.builtin_commands['jobs'])
+run_builtin('jobs')
 
 #check the prompt and move past this text
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
+expect_prompt("Shell did not print expected prompt (7)")
 
-
-#check the prompt and move past this text
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
+expect_prompt("Shell did not print expected prompt (8)")
 
 #check the jobs list
-c.sendline(def_module.builtin_commands['jobs'])
+run_builtin('jobs')
 
 #check that the first job is still on the jobs list
-assert (jobid, status_message, command_line) == \
-    shellio.parse_regular_expression(c, def_module.job_status_regex), \
+assert (jobid, status_message, command_line) == parse_job_line(),\
     "The original job was not displayed properly after ending a previous job."
 
 # ensure the prompt is printed
-assert c.expect(def_module.prompt) == 0, "Shell did not print expected prompt"
-
-
+expect_prompt("Shell did not print expected prompt (9)")
 
 # exit
-c.sendline("exit");
-assert c.expect_exact("exit\r\n") == 0, "Shell output extraneous characters"
+sendline("exit");
+expect_exact("exit\r\n", "Shell output extraneous characters")
 
-
-shellio.success()
+test_success()

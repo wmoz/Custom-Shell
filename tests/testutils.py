@@ -1,15 +1,54 @@
-"""
-Utility module for advanced tests.
-"""
-import sys, imp, atexit
-import os, re, time, pexpect, shellio, tempfile, proc_check, shutil, stat, signal
+#####
+#
+# Collection of handy routines for testing shells
+#
+# Include this file with "import shelltests"
+#
+#####
 
+import sys, imp, atexit
+import os, re, time, pexpect, tempfile, proc_check, shutil, stat, signal, traceback
 from collections import namedtuple
+
+def test_success(msg = "", exit = True):
+    """Print PASS message and optionally 'msg'.  Exit unless 'exit is False"""
+    print "PASS", msg
+    if exit:
+        sys.exit(0)
+
+def parse_regular_expression(pexpect_child, regex):
+    """
+    A regular expression was printed and is matched into groups and returned.
+    The return value will be a tuple of all of the parenthetical groups found
+    in the regular expression.  For example:
+    regex = \[(\d+)\] (\d+) will return a tuple
+    of the form (decimal_one, decimal_two) as it was read from the output
+    of the shell "[decimal_one] decimal_two".
+    """
+    pexpect_child.expect(regex)
+    return __regex2tuple(pexpect_child.match)
+
+def __regex2tuple(match):
+    """Turn a matched regular expression into a tuple of its captured groups"""
+    return tuple([ match.group(i) for i in range(1, match.lastindex + 1) ])
+
+def handle_exception(type, exc, tb):
+    """Install a default exception handler.
+    If there is a pexpect.TIMEOUT exception thrown at any time in the script,
+    report that the test failed because of a timeout and exit.
+    """
+    if type == pexpect.TIMEOUT:
+        print "\n>>> FAIL: Test timed out", exc.get_trace(), "\n"
+    else:
+        print "\n>>> FAIL: ", type, "'", exc, "'\n"
+    traceback.print_tb(tb)
+
+sys.excepthook = handle_exception
 
 console = None
 settings_module = None
 
-def setup_tests():
+def setup_tests(additional_cmdline_arguments = []):
     global console
     global settings_module
     
@@ -20,11 +59,12 @@ def setup_tests():
         logfile = settings_module.logfile
 
     #spawn an instance of the shell
-    console = pexpect.spawn(settings_module.shell, drainpty=True, logfile=logfile or sys.stdout)
+    console = pexpect.spawn(settings_module.shell + " ".join(map(str, additional_cmdline_arguments)), drainpty=True, logfile=logfile or sys.stdout)
     atexit.register(kill, shell_process=console)
 
     # set timeout for all following 'expect*' calls to 2 seconds
     console.timeout = 2 
+    return console
 
 
 def sendline(line):
@@ -33,7 +73,8 @@ def sendline(line):
 def sendcontrol(ch):
     console.sendcontrol(ch)
 
-test_success = shellio.success
+def sendintr():
+    console.sendintr()
 
 def expect(line, message=None):
     if message is None:
@@ -54,7 +95,7 @@ def expect_prompt(message=None):
     assert console.expect(settings_module.prompt) == 0, message
 
 def expect_regex(regex):
-    return shellio.parse_regular_expression(console, regex)
+    return parse_regular_expression(console, regex)
 
 def kill(shell_process):
     console.close(force=True)
@@ -84,19 +125,25 @@ def run_builtin(command, *args):
 
 def assert_correct_fds(pid, message):
     '''Checks that file descriptors are not leaked into
-    the child. An allowance is given for fd 3 if it is a tty
-    because the original example code leaks but this is
-    fixed upstream.'''
+    the child. 
+    '''
 
     time.sleep(0.5)
     fds = sorted(os.listdir('/proc/{0}/fd'.format(pid)))
-    tty = True
-    print fds
-    if '3' in fds:
-        tty = os.path.samefile('/proc/{0}/fd/3'.format(pid), '/dev/tty')
 
-    if not (fds == list('012') or (fds == list('0123') and tty)):
+    if not (fds == list('012')):
         raise Exception('File descriptors leaked into child! Remember to close() all of the pipes and IO redir file descriptors')
 
 def get_shell_pid():
     return console.pid
+
+def make_test_program(src):
+    exefile, exefilename = tempfile.mkstemp()
+    os.close(exefile)
+    ofile, ofilename = tempfile.mkstemp(suffix=".c")
+    os.write(ofile, src)
+    os.close(ofile)
+    os.system("gcc %s -o %s" % (ofilename, exefilename))
+    os.unlink(ofilename)
+    return exefilename
+

@@ -14,7 +14,7 @@ HEADERS=$(patsubst %.o,%.h,$(OBJECTS))
 
 default: cush
 
-$(LIB_OBJECTS) : $(HEADERS)
+$(OBJECTS) cush.o: $(HEADERS)
 
 # build scanner and parser
 shell-grammar.o: shell-grammar.y shell-grammar.l $(HEADERS)
@@ -28,6 +28,6 @@ cush: $(OBJECTS) cush.o $(HEADERS) shell-grammar.o
 	$(CC) $(CFLAGS) -o $@ $(LDFLAGS) cush.o shell-grammar.o $(OBJECTS) $(LDLIBS)
 
 clean:
-	rm -f $(OBJECTS) $(LIB_OBJECTS) cush shell-grammar.o \
+	rm -f $(OBJECTS) cush shell-grammar.o \
 		core.* tests/*.pyc
 

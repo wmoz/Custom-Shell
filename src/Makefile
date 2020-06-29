@@ -28,6 +28,6 @@ cush: $(OBJECTS) cush.o $(HEADERS) shell-grammar.o
 	$(CC) $(CFLAGS) -o $@ $(LDFLAGS) cush.o shell-grammar.o $(OBJECTS) $(LDLIBS)
 
 clean:
-	rm -f $(OBJECTS) cush shell-grammar.o \
+	rm -f $(OBJECTS) cush cush.o shell-grammar.o \
 		core.* tests/*.pyc
 

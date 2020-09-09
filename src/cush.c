@@ -203,6 +203,10 @@ sigchld_handler(int sig, siginfo_t *info, void *_ctxt)
  * deallocated.  You should postpone deleting completed
  * jobs from the job list until when your code will no
  * longer touch them.
+ *
+ * The code below relies on `job->status` having been set to FOREGROUND
+ * and `job->num_processes_alive` having been set to the number of
+ * processes successfully forked for this job.
  */
 static void
 wait_for_job(struct job *job)
@@ -213,8 +217,20 @@ wait_for_job(struct job *job)
         int status;
 
         pid_t child = waitpid(-1, &status, WUNTRACED);
+
+        // When called here, any error returned by waitpid indicates a logic
+        // bug in the shell.
+        // In particular, ECHILD "No child process" means that there has
+        // already been a successful waitpid() call that reaped the child, so
+        // there's likely a bug in handle_child_status where it failed to update
+        // the "job" status and/or num_processes_alive fields in the required
+        // fashion.
+        // Since SIGCHLD is blocked, there cannot be races where a child's exit
+        // was handled via the SIGCHLD signal handler.
         if (child != -1)
             handle_child_status(child, status);
+        else
+            utils_fatal_error("waitpid failed, see code for explanation");
     }
 }
 

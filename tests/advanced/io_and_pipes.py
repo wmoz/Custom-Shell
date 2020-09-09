@@ -17,11 +17,17 @@ expect_prompt()
 
 os.unlink(tmpfile)
 
+# the following command should (a) complete and (b) output 333
+# this test tends to fail if the parent retains pipe file descriptors
+# because 'wc' then doesn't exit with head exits and close the pipe
+sendline('yes test | head -n 333 | wc -l')
+expect("333")
+expect_prompt()
+
+# now repeat this combined with I/O redirection ending the pipeline
 tmpfile = '/tmp/{0}.{1}.txt'.format(int(time.time() * 1000),
                                     os.getuid())
 
-# this test tends to fail if the parent retains pipe file descriptors
-# because 'wc' then doesn't exit with head exits and close the pipe
 sendline('yes test | head -n 3 | wc -l > {0}'.format(tmpfile))
 expect_prompt()
 with open(tmpfile) as fd:

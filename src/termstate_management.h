@@ -7,7 +7,11 @@
 void termstate_init(void);
 
 /* Save current terminal settings.
- * This function should be called when a job is suspended.*/
+ * This function should be called when a job is suspended and the
+ * state should be saved for this job so it can be restored with
+ * termstate_give_terminal_to when that job is made the foreground
+ * job again.
+ */
 void termstate_save(struct termios *saved_tty_state);
 
 /**
@@ -15,6 +19,15 @@ void termstate_save(struct termios *saved_tty_state);
  * pgrp, restoring its terminal state if provided.
  */
 void termstate_give_terminal_to(struct termios *pg_tty_state, pid_t pgrp);
+
+/**
+ * Sample the current terminal state as the "last known good
+ * state" (that is, the state that is restored when
+ * termstate_give_terminal_back_to_shell is called).
+ * This should be called when a foreground process exits,
+ * but not when a foreground process terminates b/c of a signal.
+ */
+void termstate_sample(void);
 
 /*
  * Restore the shell's terminal state and assign ownership

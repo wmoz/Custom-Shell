@@ -1,4 +1,3 @@
-#!/usr/bin/python
 from testutils import *
 
 setup_tests()

@@ -1,9 +1,9 @@
-#!/usr/bin/python
 from testutils import *
 from tempfile import mkstemp
 
 setup_tests()
 
+expect_prompt()
     
 message = '''Test very simple pipe application:
 echo hello |& rev'''

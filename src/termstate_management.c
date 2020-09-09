@@ -36,8 +36,8 @@ termstate_init(void)
     if (utils_set_cloexec(terminal_fd))
         utils_fatal_error("cannot mark terminal fd FD_CLOEXEC");
 
-    termstate_save(&saved_tty_state);
     shell_pgrp = getpgrp();
+    termstate_sample();
 }
 
 /* Save current terminal settings.
@@ -105,4 +105,10 @@ termstate_give_terminal_back_to_shell(void)
 {
     assert (shell_pgrp > 0 || !!!"termstate_init was not called");
     termstate_give_terminal_to(&saved_tty_state, shell_pgrp);
+}
+
+void
+termstate_sample(void)
+{
+    termstate_save(&saved_tty_state);
 }

@@ -48,10 +48,11 @@ builtin_commands = {
     'stop' : 'stop %s',
     'kill' : 'kill %s',
     'fg'   : 'fg %s',
-    'bg'   : 'bg %s'
+    'bg'   : 'bg %s',
+    'exit' : 'exit'
 }
 
 # Uncomment this line if you like stdriver.py to keep a log of everything
 # input and output to the pty in file 'log.txt'
 #
-#logfile=open("log.txt", "w")
+logfile=open("log.txt", "w")

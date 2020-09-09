@@ -1,4 +1,3 @@
-#!/usr/bin/python
 '''
 Job control tests for shell. Similar to previous tests
 on single commands but with pipelines. Common errors

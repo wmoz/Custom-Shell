@@ -22,7 +22,7 @@
 # error information will be displayed.
 #
 
-import getopt, os, sys, subprocess, re
+import getopt, os, sys, subprocess, re, json
 
 # add directory in which script is located to python path
 # resolve any symlinks
@@ -39,6 +39,8 @@ advanced_test_file = "advanced.tst"
 reduced_test_file = "reduced.tst"
 testfilter = None
 list_tests = False
+print_json = False
+sum_points = dict()
 
 def usage():
     print """
@@ -54,7 +56,7 @@ Usage: python stdriver.py [options] [tests1.tst tests2.tst] ...
     """ % (test_base)
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "hvmbo:p:t:B:al", \
+    opts, args = getopt.getopt(sys.argv[1:], "hvmbjo:p:t:B:al", \
         ["help", "outputspec=", "test="])
 except getopt.GetoptError, err:
     # print help information and exit:
@@ -84,6 +86,8 @@ for o, a in opts:
         plugin_directory = a
     elif o in ("-o"):
         output_spec_file = a
+    elif o in ("-j"):
+        print_json = True
     else:
         assert False, "unhandled option"
 
@@ -207,8 +211,20 @@ for testset in full_testlist:
     print testset['name'] + '\t' + str(testset_points_earned) + '/' + \
                                                         str(testset_points)
 
+    # Gather score info for json output if necessary
+    if (print_json):
+        sum_points[testset['name']] = dict()
+        sum_points[testset['name']]['points'] = testset_points_earned
+        sum_points[testset['name']]['max'] = testset_points
 
-
+# Write scores.json to the current (src) directory
+if (print_json):
+    try:
+        outfile = open('./scores.json', 'w')
+        outfile.write(json.dumps(sum_points))
+        outfile.close()
+    except Exception as e:
+        pass
 #Verbose printing.  If the verbose option was enabled, print the error
 #information from the tests that failed.
 if verbose:

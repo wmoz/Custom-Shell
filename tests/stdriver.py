@@ -211,16 +211,16 @@ for testset in full_testlist:
     print testset['name'] + '\t' + str(testset_points_earned) + '/' + \
                                                         str(testset_points)
 
-    # Handle json output for grading if necessary
+    # Gather score info for json output if necessary
     if (print_json):
         sum_points[testset['name']] = dict()
         sum_points[testset['name']]['points'] = testset_points_earned
         sum_points[testset['name']]['max'] = testset_points
 
-
+# Write scores.json to the current (src) directory
 if (print_json):
     try:
-        outfile = open('../scores.json', 'w')
+        outfile = open('scores.json', 'w')
         outfile.write(json.dumps(sum_points))
         outfile.close()
     except Exception as e:

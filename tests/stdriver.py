@@ -220,7 +220,7 @@ for testset in full_testlist:
 # Write scores.json to the current (src) directory
 if (print_json):
     try:
-        outfile = open('scores.json', 'w')
+        outfile = open('./scores.json', 'w')
         outfile.write(json.dumps(sum_points))
         outfile.close()
     except Exception as e:

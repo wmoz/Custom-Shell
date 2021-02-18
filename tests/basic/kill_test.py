@@ -43,6 +43,14 @@ time.sleep(.5)
 
 # check the proc file that the process has actually been stopped
 # the proc file should not exist
+#
+# please note that the OS will remove this entry only after the process
+# has been both killed and reaped.  (If it's just killed but not reaped,
+# it's a Zombie but retains its /proc entry.)
+# Make sure your shell does not with SIGCHLD blocked at the prompt
+# and fails to reap the sleep 30 & background job from above after you
+# kill it.
+#
 assert not os.path.exists("/proc/" + pid + "/stat"), 'the process was not \
 killed'
 

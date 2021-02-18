@@ -19,7 +19,7 @@ os.unlink(tmpfile)
 
 # the following command should (a) complete and (b) output 333
 # this test tends to fail if the parent retains pipe file descriptors
-# because 'wc' then doesn't exit with head exits and close the pipe
+# because 'wc' then doesn't exit when head exits and closes the pipe
 sendline('yes test | head -n 333 | wc -l')
 expect("333")
 expect_prompt()

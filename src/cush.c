@@ -2,12 +2,14 @@
  * cush - the customizable shell.
  *
  * Developed by Godmar Back for CS 3214 Summer 2020 
- * Virginia Tech.
+ * Virginia Tech.  Augmented to use posix_spawn in Fall 2021.
  */
+#define _GNU_SOURCE    1
 #include <stdio.h>
 #include <readline/readline.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 #include <termios.h>
 #include <sys/wait.h>
 #include <assert.h>
@@ -197,7 +199,7 @@ sigchld_handler(int sig, siginfo_t *info, void *_ctxt)
  * If a process exited, it must find the job to which it
  * belongs and decrement num_processes_alive.
  *
- * However, not that it is not safe to call delete_job
+ * However, note that it is not safe to call delete_job
  * in handle_child_status because wait_for_job assumes that
  * even jobs with no more num_processes_alive haven't been
  * deallocated.  You should postpone deleting completed
@@ -278,7 +280,6 @@ main(int ac, char *av[])
         char * prompt = isatty(0) ? build_prompt() : NULL;
         char * cmdline = readline(prompt);
         free (prompt);
-
 
         if (cmdline == NULL)  /* User typed EOF */
             break;

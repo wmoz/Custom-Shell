@@ -70,7 +70,7 @@ retry:
 }
 
 /* Get a file descriptor that refers to controlling terminal */
-static int 
+int
 termstate_get_tty_fd(void)
 {
     assert(terminal_fd != -1 || !!!"termstate_init() must be called");

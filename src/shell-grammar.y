@@ -234,6 +234,7 @@ command:   WORD {
             if ($1->iored_input)   { p_error(AMBINP); YYABORT; }
             $$ = $1; 
             $$->iored_input = $2->iored_input;
+            free($2);
 		}
 |		command output {
             obstack_free(&$2->words, NULL);
@@ -243,6 +244,7 @@ command:   WORD {
             $$->iored_output = $2->iored_output;
             $$->append_to_output = $2->append_to_output;
             $$->redirect_stderr = $2->redirect_stderr;
+            free($2);
 		}
 
 input:	'<' WORD { 

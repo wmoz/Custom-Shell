@@ -36,4 +36,7 @@ void termstate_sample(void);
  */
 void termstate_give_terminal_back_to_shell(void);
 
+/* Get a file descriptor that refers to controlling terminal */
+int termstate_get_tty_fd(void);
+
 #endif /* __TERMSTATE_MANAGEMENT_H */

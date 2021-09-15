@@ -1,12 +1,11 @@
 #
 # A simple Makefile to build the shell
 #
-LDFLAGS=
-LDLIBS=-ll -lreadline
+LDFLAGS=-L../posix_spawn
+LDLIBS=-lspawn -ll -lreadline
 # The use of -Wall, -Werror, and -Wmissing-prototypes is mandatory 
 # for this assignment
-CFLAGS=-Wall -Werror -Wmissing-prototypes -g -O2
-#YFLAGS=-v
+CFLAGS=-Wall -Werror -Wmissing-prototypes -I../posix_spawn -g -O2 -fsanitize=undefined
 YACC=bison
 
 OBJECTS=list.o shell-ast.o termstate_management.o utils.o signal_support.o

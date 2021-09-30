@@ -543,7 +543,8 @@ class spawn (object):
         if self.pid == 0: # Child
             try:
                 self.child_fd = sys.stdout.fileno() # used by setwinsize()
-                self.setwinsize(24, 80)
+                # provide a generous window to avoid linebreaks by readline
+                self.setwinsize(24, 200)
             except:
                 # Some platforms do not like setwinsize (Cygwin).
                 # This will cause problem when running applications that

@@ -19,5 +19,6 @@ run_builtin('fg', str(job.id))
 expect('Job now continuing...', 'continue ts_test')
 
 expect_prompt()
+os.unlink(exe)
 
 test_success()

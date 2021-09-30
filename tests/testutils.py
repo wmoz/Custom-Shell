@@ -52,6 +52,9 @@ def setup_tests(additional_cmdline_arguments = []):
     global console
     global settings_module
     
+    if not os.access(".tmp", os.R_OK | os.X_OK):
+        os.mkdir(".tmp", 0755)
+    os.environ["TEMP"] = ".tmp"
     definitions_scriptname = sys.argv[1]
     settings_module = imp.load_source('', definitions_scriptname)
     logfile = None

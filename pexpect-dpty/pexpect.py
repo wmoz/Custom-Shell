@@ -543,7 +543,15 @@ class spawn (object):
         if self.pid == 0: # Child
             try:
                 self.child_fd = sys.stdout.fileno() # used by setwinsize()
-                # provide a generous window to avoid linebreaks by readline
+                # was: self.setwinsize(24, 80)
+                # Provide a generous window to avoid linebreaks by readline:
+                #
+                # make the simulated window wider to accommodate long prompts
+                # otherwise, readline will output a newline character to go the
+                # next line, which breaks some tests.
+                # Still, even when the cwd is a long path (like during testing)
+                # students should produce a very long custom prompt - it's not
+                # user friendly.
                 self.setwinsize(24, 200)
             except:
                 # Some platforms do not like setwinsize (Cygwin).

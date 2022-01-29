@@ -544,6 +544,8 @@ class spawn (object):
             try:
                 self.child_fd = sys.stdout.fileno() # used by setwinsize()
                 # was: self.setwinsize(24, 80)
+                # Provide a generous window to avoid linebreaks by readline:
+                #
                 # make the simulated window wider to accommodate long prompts
                 # otherwise, readline will output a newline character to go the
                 # next line, which breaks some tests.

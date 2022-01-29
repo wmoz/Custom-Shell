@@ -148,6 +148,12 @@ ast_pipeline_free(struct ast_pipeline *pipe)
         e = list_remove(e);
         ast_command_free(cmd);
     }
+    if (pipe->iored_input)
+        free(pipe->iored_input);
+
+    if (pipe->iored_output)
+        free(pipe->iored_output);
+
     free(pipe);
 }
 

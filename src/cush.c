@@ -294,7 +294,17 @@ main(int ac, char *av[])
             continue;
         }
 
-        ast_command_line_print(cline);
+        ast_command_line_print(cline);      /* Output a representation of
+                                               the entered command line */
+
+        /* Free the command line.
+         * This will free the ast_pipeline objects still contained
+         * in the ast_command_line.  Once you implement a job list
+         * that may take ownership of ast_pipeline objects that are
+         * associated with jobs you will need to reconsider how you
+         * manage the lifetime of the associated ast_pipelines.
+         * Otherwise, freeing here will cause use-after-free errors.
+         */
         ast_command_line_free(cline);
     }
     return 0;

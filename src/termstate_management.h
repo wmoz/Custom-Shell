@@ -17,6 +17,10 @@ void termstate_save(struct termios *saved_tty_state);
 /**
  * Assign ownership of the terminal to process group
  * pgrp, restoring its terminal state if provided.
+ *
+ * When you assign ownership of the terminal to a process
+ * group for the first time, call this function with NULL
+ * as pg_tty_state.
  */
 void termstate_give_terminal_to(struct termios *pg_tty_state, pid_t pgrp);
 

@@ -9,6 +9,8 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "signal_support.h"
 #include "utils.h"
@@ -55,7 +57,19 @@ void
 signal_set_handler(int sig, sa_sigaction_t handler)
 {
     sigset_t emptymask;
-
+    if (sig != SIGCHLD) {
+        fprintf(stderr,
+            "For the cush project, the only signal you need to catch\n"
+            "is SIGCHLD.  In particular, implementing Ctrl-Z and Ctrl-C\n"
+            "for child process does not require signal handling on the\n"
+            "part of the shell.\n"
+            "The only reason to handle SIGINT and/or SIGTSTP by the shell\n"
+            "itself is if you wanted to prevent a user from using Ctrl-Z/C\n"
+            "from affecting the shell itself while it is sitting at the prompt\n"
+            "Remove this statement if you know what you're doing\n"
+        );
+        abort();
+    }
     sigemptyset(&emptymask);
     struct sigaction sa = {
         .sa_sigaction = handler,

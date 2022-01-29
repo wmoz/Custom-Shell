@@ -73,6 +73,7 @@ while count < 4:
     if 'sleep' in cmd:
         assert stat == 'T'
         count += 1
+expect_prompt()
 
 run_builtin('bg', str(job.id))
 expect_prompt()

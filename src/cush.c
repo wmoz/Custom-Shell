@@ -281,25 +281,54 @@ handle_child_status(pid_t pid, int status)
      *         If a process was stopped, save the terminal state.
      */
     
-    //gets the process group id through the pid given 
-    //pid_t pgid = getpgid(pid);
-    //gets the job through the process group id
-    //struct job* jobNeeded = get_Job(pgid, job_list); 
+    // //gets the process group id through the pid given 
+    // pid_t pgid = getpgid(pid);
+    // //gets the job through the process group id
+    // struct job* jobNeeded = get_Job(pgid, job_list); 
 
     // //proccess stop
     // if (WIFSTOPPED(status))
     // {
     //     //User stops fg process with Ctrl-Z
-    //     if (WSTOPSIG(status) == SIGTSTP(status))
+    //     if (WSTOPSIG(status) == SIGTSTP)
     //     {
     //         /* code */
     //     }
     //     //User stops process with kill -STOP
-    //     else if (WSTOPSIG(status) == SIGSTOP(status))
+    //     else if (WSTOPSIG(status) == SIGSTOP)
     //     {
     //         /* code */
     //     }
     //     //non-foreground process wants terminal access
+    //     else
+    //     {
+    //         /* code */
+    //     }
+    // }
+    // //process exits via exit()
+    // else if (WIFEXITED(status))
+    // {
+    //         /* code */
+    // }
+    // //user terminates process
+    // else if (WIFSIGNALED(status))
+    // {
+    //     //user terminates process with Ctrl-C
+    //     if(WTERMSIG(status) == SIGINT)
+    //     {
+    //         /* code */
+    //     }
+    //     //user terminates process with kill
+    //     else if (WTERMSIG(status) == SIGTERM)
+    //     {
+    //         /* code */
+    //     }
+    //     //user terminates process with kill -9
+    //     else if (WTERMSIG(status) == SIGKILL)
+    //     {
+    //         /* code */
+    //     }
+    //     //process has been terminated (general case)
     //     else
     //     {
     //         /* code */

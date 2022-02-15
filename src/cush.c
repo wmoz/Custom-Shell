@@ -25,7 +25,7 @@
 
 extern char **environ;
 int handle_job(struct ast_pipeline* pipe);
-int _posix_fg(pid_t *pid, pid_t pgid, char** argv, bool leader, bool fg);
+int _posix_spawn_run(pid_t *pid, pid_t pgid, char** argv, bool leader, bool fg);
 static void handle_child_status(pid_t pid, int status);
 
 static void

@@ -25,7 +25,7 @@
 
 extern char **environ;
 int handle_job(struct ast_pipeline* pipe);
-int _posix_fg(pid_t *pid, pid_t pgid, char** argv, bool leader);
+int _posix_fg(pid_t *pid, pid_t pgid, char** argv, bool leader, bool fg);
 static void handle_child_status(pid_t pid, int status);
 
 static void
@@ -260,6 +260,7 @@ handle_child_status(pid_t pid, int status)
      *         If a process was stopped, save the terminal state.
      */
     
+    
 
 }
 
@@ -358,13 +359,12 @@ int handle_job(struct ast_pipeline* pipe)
     for (; e != list_end (&pipe->commands); e = list_next(e)) 
     {
         struct ast_command *cmd = list_entry(e, struct ast_command, elem); // Question:: ask about elem
-        //fg process
-        if(!pipe ->bg_job ) 
-        {
-            if(_posix_fg(&pid,pgid, cmd -> argv,leader) != 0) return -1; //Question:: what happens if a command fails
-        }
-        //bg process
-        else{}
+        
+        //handles running fg and bg process
+        if(_posix_spawn_run(&pid,pgid, cmd -> argv,leader, !pipe->bg_job) != 0) return -1; //Question:: what happens if a command fails
+        
+        
+       
 
         //run only after first command
         if (e == list_begin(&pipe->commands)){
@@ -376,14 +376,18 @@ int handle_job(struct ast_pipeline* pipe)
 
     }
     //wait for all childern of pgid to exit
-    if(waitpid(-pgid, NULL, 0) == -1) // replace with wait_for_job when handle_child_status is done 
+    if(!pipe -> bg_job)
     {
+        if(waitpid(-pgid, NULL, 0) == -1) // replace with wait_for_job when handle_child_status is done 
+        {
+        }
     }
     
     termstate_give_terminal_back_to_shell();
     return 0;
 
 }
+
 /**
  * \brief manages running a fg process with argv. Sets up all the needed attr to run
  * the process. Sets up process group to get obtain terminal control.
@@ -393,9 +397,11 @@ int handle_job(struct ast_pipeline* pipe)
  * \param pgid group process id of the process's group
  * \param argv arguments for the process
  * \param leader true if process is group leader
+ * \param fg true if process is to be run in fg and false if to be run in bg
  * \return int 0 if process is succesfully run, -1 if process fails 
+ * 
  */
-int _posix_fg(pid_t *pid, pid_t pgid, char** argv, bool leader)
+int _posix_spawn_run(pid_t *pid, pid_t pgid, char** argv, bool leader, bool fg)
 {
     posix_spawnattr_t attr;
     //intialize poxis_spawn attributes
@@ -403,7 +409,7 @@ int _posix_fg(pid_t *pid, pid_t pgid, char** argv, bool leader)
         printf("posix init error \n");
 
     
-    if(leader)
+    if(leader && fg)
     {
         //set flags for getting terminal acess & setting a group process
         if(posix_spawnattr_setflags (&attr, POSIX_SPAWN_TCSETPGROUP | POSIX_SPAWN_SETPGROUP )!=0) 

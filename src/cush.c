@@ -27,6 +27,7 @@ extern char **environ;
 int handle_job(struct ast_pipeline* pipe);
 int _posix_spawn_run(pid_t *pid, pid_t pgid, char** argv, bool leader, bool fg);
 static void handle_child_status(pid_t pid, int status);
+struct job get_Job(pid_t pgid, struct list job_list);
 
 static void
 usage(char *progname)
@@ -243,7 +244,29 @@ wait_for_job(struct job *job)
     }
 }
 
-
+/**
+ * \brief gets the job associated with the pgid
+ * 
+ * \param pgid process group id 
+ * \param job_list the list that contains the jobs
+ * \return the job that matches the pgid 
+ * 
+ */
+struct job get_Job(pid_t pgid, struct list job_list) 
+{ 
+    struct job jobResult;
+    struct list_elem * e;
+    for (e = list_begin(&job_list); e != list_end(&job_list); e = list_next(e))
+    {
+        struct job *jobinList = list_entry (e, struct job, elem);
+        if (jobinList->pgid == pgid)
+        {
+            jobResult = *jobinList;
+            break;
+        }
+    }
+    return jobResult;
+}
 
 static void
 handle_child_status(pid_t pid, int status)
@@ -260,9 +283,32 @@ handle_child_status(pid_t pid, int status)
      *         If a process was stopped, save the terminal state.
      */
     
-    
+    //gets the process group id through the pid given 
+    //pid_t pgid = getpgid(pid);
+    //gets the job through the process group id
+    //struct job jobNeeded = get_Job(pgid, job_list); 
 
+    // //proccess stop
+    // if (WIFSTOPPED(status))
+    // {
+    //     //User stops fg process with Ctrl-Z
+    //     if (WSTOPSIG(status) == SIGTSTP(status))
+    //     {
+    //         /* code */
+    //     }
+    //     //User stops process with kill -STOP
+    //     else if (WSTOPSIG(status) == SIGSTOP(status))
+    //     {
+    //         /* code */
+    //     }
+    //     //non-foreground process wants terminal access
+    //     else
+    //     {
+    //         /* code */
+    //     }
+    // }
 }
+
 
 int
 main(int ac, char *av[])

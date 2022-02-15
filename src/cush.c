@@ -13,6 +13,7 @@
 #include <termios.h>
 #include <sys/wait.h>
 #include <assert.h>
+#include <spawn.h>
 
 /* Since the handed out code contains a number of unused functions. */
 #pragma GCC diagnostic ignored "-Wunused-function"
@@ -22,6 +23,9 @@
 #include "shell-ast.h"
 #include "utils.h"
 
+extern char **environ;
+int handle_job(struct ast_pipeline* pipe);
+int _posix_fg(pid_t *pid, pid_t pgid, char** argv, bool leader);
 static void handle_child_status(pid_t pid, int status);
 
 static void
@@ -58,8 +62,11 @@ struct job {
     int  num_processes_alive;   /* The number of processes that we know to be alive */
     struct termios saved_tty_state;  /* The state of the terminal when this job was 
                                         stopped after having been in foreground */
-
+   
     /* Add additional fields here if needed. */
+    pid_t pgid; //stores the pgid for the job
+
+
 };
 
 /* Utility functions for job list management.
@@ -252,6 +259,7 @@ handle_child_status(pid_t pid, int status)
      *         num_processes_alive if appropriate.
      *         If a process was stopped, save the terminal state.
      */
+    
 
 }
 
@@ -259,6 +267,9 @@ int
 main(int ac, char *av[])
 {
     int opt;
+    
+    
+    
 
     /* Process command-line arguments. See getopt(3) */
     while ((opt = getopt(ac, av, "h")) > 0) {
@@ -272,6 +283,7 @@ main(int ac, char *av[])
     list_init(&job_list);
     signal_set_handler(SIGCHLD, sigchld_handler);
     termstate_init();
+   
 
     /* Read/eval loop. */
     for (;;) {
@@ -293,9 +305,11 @@ main(int ac, char *av[])
             ast_command_line_free(cline);
             continue;
         }
-
-        ast_command_line_print(cline);      /* Output a representation of
-                                               the entered command line */
+        struct list_elem * e = list_begin (&cline->pipes);
+        struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
+        handle_job(pipe);
+        // ast_command_line_print(cline);      /* Output a representation of
+        //                                        the entered command line */
 
         /* Free the command line.
          * This will free the ast_pipeline objects still contained
@@ -306,6 +320,138 @@ main(int ac, char *av[])
          * Otherwise, freeing here will cause use-after-free errors.
          */
         ast_command_line_free(cline);
+
+
+        
+        
+
+
+        
     }
     return 0;
 }
+
+/**
+ * \brief handle_job handles running the commands passed to the shell
+ * the function adds a new jobn to the job list and updates it's pgid
+ * The function handles fg and bg commands
+ * 
+ * \param pipe list of commands of the job to be run 
+ * \return int 0 if add was successful, -1 of adding failed
+ * \todo 
+ * add bg command support
+ * replace waitpid with wait_for_job once handle_child_Status is done
+ * 
+ */
+int handle_job(struct ast_pipeline* pipe)
+{
+    bool leader = true;
+    pid_t pid;
+    pid_t pgid =0;
+
+    signal_block(SIGCHLD); //Question:: when to unblock signal?
+
+    struct job* curJob = add_job(pipe);
+    struct list_elem * e = list_begin (&pipe->commands);
+
+    //iterate over all commands in a pipe 
+    for (; e != list_end (&pipe->commands); e = list_next(e)) 
+    {
+        struct ast_command *cmd = list_entry(e, struct ast_command, elem); // Question:: ask about elem
+        //fg process
+        if(!pipe ->bg_job ) 
+        {
+            if(_posix_fg(&pid,pgid, cmd -> argv,leader) != 0) return -1; //Question:: what happens if a command fails
+        }
+        //bg process
+        else{}
+
+        //run only after first command
+        if (e == list_begin(&pipe->commands)){
+            pgid = pid; //set the first process's pid to the pgid
+            leader = false;
+            curJob -> pgid = pgid; // add group id to the job
+        } 
+        curJob-> num_processes_alive++;
+
+    }
+    //wait for all childern of pgid to exit
+    if(waitpid(-pgid, NULL, 0) == -1) // replace with wait_for_job when handle_child_status is done 
+    {
+    }
+    
+    termstate_give_terminal_back_to_shell();
+    return 0;
+
+}
+/**
+ * \brief manages running a fg process with argv. Sets up all the needed attr to run
+ * the process. Sets up process group to get obtain terminal control.
+ * Addeds the process it runs to the pgid given 
+ * 
+ * \param pid pointer to variable that will store process pid
+ * \param pgid group process id of the process's group
+ * \param argv arguments for the process
+ * \param leader true if process is group leader
+ * \return int 0 if process is succesfully run, -1 if process fails 
+ */
+int _posix_fg(pid_t *pid, pid_t pgid, char** argv, bool leader)
+{
+    posix_spawnattr_t attr;
+    //intialize poxis_spawn attributes
+    if(posix_spawnattr_init (&attr) != 0) 
+        printf("posix init error \n");
+
+    
+    if(leader)
+    {
+        //set flags for getting terminal acess & setting a group process
+        if(posix_spawnattr_setflags (&attr, POSIX_SPAWN_TCSETPGROUP | POSIX_SPAWN_SETPGROUP )!=0) 
+        {
+            printf("posix flag error");
+            return -1;
+        }
+        //updates attr with a fd controlling terminal 
+        if(posix_spawnattr_tcsetpgrp_np(&attr,termstate_get_tty_fd())!=0)
+        {
+            printf("posix terminal control error\n");
+            return -1;
+        }
+    }
+    else
+    {  
+        //sets flags to set process's group
+        if(posix_spawnattr_setflags (&attr, POSIX_SPAWN_SETPGROUP)!=0) 
+        {
+            printf("posix flag error");
+            return -1;
+        }
+    }
+    //updates attr with the pgid the process will be added to
+    //if 0 creates a new process group
+    if(posix_spawnattr_setpgroup(&attr,pgid)!= 0)
+    {
+        printf("posix set group");
+        return -1;
+    }
+    //runs the process if return != 0 the process failed to run
+    if(posix_spawnp(pid, argv[0], NULL, &attr, argv, environ) != 0)
+    {
+        printf("%s: No such file or directory\n", argv[0]);
+        return -1;
+    }
+
+    return 0;
+
+}
+// int _posix_bg()
+// {
+
+// }
+
+
+
+        // terminal state
+        // running command; command
+        // initially step // does it matter which process is run first in a pipe
+        //signals 

@@ -1,4 +1,4 @@
-CFLAGS=-I. -Wall -Werror
+CFLAGS=-I. -Wall -Werror -g
 
 OBJ=spawnattr_setflags.o  spawnattr_tcsetpgrp.o  spawn.o  spawni.o
 

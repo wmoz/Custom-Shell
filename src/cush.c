@@ -97,9 +97,11 @@ add_job(struct ast_pipeline *pipe)
     struct job *job = malloc(sizeof *job);
     job->pipe = pipe;
     job->num_processes_alive = 0;
-    //Checks if command is being run as foreground or background ~added
-    if(pipe ->bg_job == true) job ->status = BACKGROUND;
-    else job -> status = FOREGROUND;
+    // Checks if command is being run as foreground or background ~added
+    if (pipe->bg_job == true)
+        job->status = BACKGROUND;
+    else
+        job->status = FOREGROUND;
 
     list_push_back(&job_list, &job->elem);
     for (int i = 1; i < MAXJOBS; i++)
@@ -111,8 +113,6 @@ add_job(struct ast_pipeline *pipe)
             return job;
         }
     }
-    
-
 
     fprintf(stderr, "Maximum number of jobs exceeded\n");
     abort();
@@ -299,33 +299,36 @@ handle_child_status(pid_t pid, int status)
     // gets the job through the process group id
     struct job *jobNeeded = get_Job(pgid, job_list);
 
-    // proccess stop
+    /* proccess stop for a temp time:
+        User stops fg process with Ctrl-Z
+        User stops process with kill -STOP
+        non-foreground process wants terminal access
+    */
     if (WIFSTOPPED(status))
     {
-        // User stops fg process with Ctrl-Z
-        // User stops process with kill -STOP
-        if (WSTOPSIG(status) == SIGTSTP || WSTOPSIG(status) == SIGSTOP)
+        // checks if the process is in the foreground
+        if (jobNeeded->status == FOREGROUND)
         {
-            //checks if the process is in the foreground
-            if (jobNeeded->status == FOREGROUND)
-            {
-                termstate_save(&jobNeeded->saved_tty_state);
-                termstate_give_terminal_back_to_shell();
-            }
-            jobNeeded->status = STOPPED;
+            termstate_save(&jobNeeded->saved_tty_state);
+            termstate_give_terminal_back_to_shell();
         }
-        // non-foreground process wants terminal access
-        else
+
+        if (WSTOPSIG(status) == SIGTTOU || WSTOPSIG(status) == SIGTTIN)
         {
             jobNeeded->status = NEEDSTERMINAL;
         }
+        else
+        {
+            jobNeeded->status = STOPPED;
+        }
+        print_job(jobNeeded);
     }
     // process exits via exit()
     else if (WIFEXITED(status))
     {
         if (jobNeeded->status == FOREGROUND)
         {
-            termstate_save(&jobNeeded->saved_tty_state);
+            // termstate_save(&jobNeeded->saved_tty_state);
             if (jobNeeded->num_processes_alive == 1)
             {
                 termstate_give_terminal_back_to_shell();
@@ -333,34 +336,48 @@ handle_child_status(pid_t pid, int status)
         }
         jobNeeded->num_processes_alive--;
     }
-    // // user terminates process
-    // else if (WIFSIGNALED(status))
-    // {
-    //     // user terminates process with Ctrl-C
-    //     if (WTERMSIG(status) == SIGINT)
-    //     {
-    //         termstate_save(&jobNeeded->saved_tty_state);
-    //         if (jobNeeded->status == FOREGROUND)
-    //         {
-    //             termstate_give_terminal_back_to_shell();
-    //         }
-    //     }
-    //     // user terminates process with kill
-    //     else if (WTERMSIG(status) == SIGTERM)
-    //     {
-    //         /* code */
-    //     }
-    //     // user terminates process with kill -9
-    //     else if (WTERMSIG(status) == SIGKILL)
-    //     {
-    //         /* code */
-    //     }
-    //     // process has been terminated (general case)
-    //     else
-    //     {
-    //         /* code */
-    //     }
-    // }
+    // user terminates process
+    else if (WIFSIGNALED(status))
+    {
+        if (jobNeeded->status == FOREGROUND)
+        {
+            if (jobNeeded->num_processes_alive == 1)
+            {
+                termstate_give_terminal_back_to_shell();
+            }
+        }
+        jobNeeded->num_processes_alive--;
+
+        // user terminates process with kill
+        if (WTERMSIG(status) == SIGTERM)
+        {
+            printf("terminated");
+        }
+        // user terminates process with kill -9
+        else if (WTERMSIG(status) == SIGKILL)
+        {
+            printf("killed");
+        }
+        // process has been terminated (general case)
+        else
+        {
+            // segmentation fault
+            if (WTERMSIG(status) == SIGSEGV)
+            {
+                printf("segmentation fault");
+            }
+            // aborted
+            else if (WTERMSIG(status) == SIGABRT)
+            {
+                printf("aborted");
+            }
+            // floating point exception
+            else if (WTERMSIG(status) == SIGFPE)
+            {
+                printf("floating point exception");
+            }
+        }
+    }
 }
 
 int main(int ac, char *av[])
@@ -407,11 +424,12 @@ int main(int ac, char *av[])
         struct list_elem *e = list_begin(&cline->pipes);
         struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
         struct ast_command *commands = list_entry(list_begin(&pipe->commands), struct ast_command, elem);
-        if(strcmp("jobs", commands->argv[0]) == 0)
+        if (strcmp("jobs", commands->argv[0]) == 0)
         {
-            for(int i =0; i < MAXJOBS; i++)
+            for (int i = 0; i < MAXJOBS; i++)
             {
-                if(jid2job[i] == NULL) continue;
+                if (jid2job[i] == NULL)
+                    continue;
                 print_job(jid2job[i]);
             }
             continue;
@@ -429,13 +447,6 @@ int main(int ac, char *av[])
          * Otherwise, freeing here will cause use-after-free errors.
          */
         free(cline);
-
-
-        
-        
-
-
-        
     }
     return 0;
 }

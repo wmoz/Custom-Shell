@@ -66,6 +66,7 @@ struct job {
    
     /* Add additional fields here if needed. */
     pid_t pgid; //stores the pgid for the job
+    
 
 
 };
@@ -97,6 +98,10 @@ add_job(struct ast_pipeline *pipe)
     struct job * job = malloc(sizeof *job);
     job->pipe = pipe;
     job->num_processes_alive = 0;
+    //Checks if command is being run as foreground or background ~added
+    if(pipe ->bg_job == true) job ->status = BACKGROUND;
+    else job -> status = FOREGROUND;
+
     list_push_back(&job_list, &job->elem);
     for (int i = 1; i < MAXJOBS; i++) {
         if (jid2job[i] == NULL) {
@@ -105,6 +110,9 @@ add_job(struct ast_pipeline *pipe)
             return job;
         }
     }
+    
+
+
     fprintf(stderr, "Maximum number of jobs exceeded\n");
     abort();
     return NULL;
@@ -381,6 +389,16 @@ main(int ac, char *av[])
         }
         struct list_elem * e = list_begin (&cline->pipes);
         struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
+        struct ast_command *commands = list_entry(list_begin(&pipe->commands), struct ast_command, elem);
+        if(strcmp("jobs", commands->argv[0]) == 0)
+        {
+            for(int i =0; i < MAXJOBS; i++)
+            {
+                if(jid2job[i] == NULL) continue;
+                print_job(jid2job[i]);
+            }
+            continue;
+        }
         handle_job(pipe);
         // ast_command_line_print(cline);      /* Output a representation of
         //                                        the entered command line */
@@ -393,7 +411,7 @@ main(int ac, char *av[])
          * manage the lifetime of the associated ast_pipelines.
          * Otherwise, freeing here will cause use-after-free errors.
          */
-        ast_command_line_free(cline);
+        free(cline);
 
 
         

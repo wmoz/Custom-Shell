@@ -28,6 +28,7 @@ int handle_job(struct ast_pipeline *pipe);
 int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg);
 static void handle_child_status(pid_t pid, int status);
 struct job *get_Job(pid_t pgid, struct list job_list);
+void _add_pid_to_job(struct job* job, pid_t pid);
 
 static void
 usage(char *progname)
@@ -68,6 +69,7 @@ struct job
 
     /* Add additional fields here if needed. */
     pid_t pgid; // stores the pgid for the job
+    pid_t pids[15]; // stores all the pids related to the job
 };
 
 /* Utility functions for job list management.
@@ -76,6 +78,7 @@ struct job
  * (b) a linked list to support iteration
  */
 #define MAXJOBS (1 << 16)
+#define MAXCMDS 15 // max num of processes a job can have
 static struct list job_list;
 
 static struct job *jid2job[MAXJOBS];
@@ -429,13 +432,7 @@ int main(int ac, char *av[])
          * Otherwise, freeing here will cause use-after-free errors.
          */
         free(cline);
-
-
-        
-        
-
-
-        
+  
     }
     return 0;
 }
@@ -479,7 +476,11 @@ int handle_job(struct ast_pipeline *pipe)
             leader = false;
             curJob->pgid = pgid; // add group id to the job
         }
+
+        _add_pid_to_job(curJob,pid);
         curJob->num_processes_alive++;
+        
+        
     }
     // wait for all childern of pgid to exit
     if (!pipe->bg_job)
@@ -552,6 +553,23 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
     }
 
     return 0;
+}
+/**
+ * \brief Helper function that adds the pid of a process in the pids array of a job
+ * 
+ * \param job the job the process is a part of
+ * \param pid pid of the process
+ */
+void _add_pid_to_job(struct job* job, pid_t pid)
+{
+    int index = job->num_processes_alive;
+    if(job -> num_processes_alive >= MAXCMDS)
+    {
+        printf("Failed to add process to pids list\n");
+        return;
+    }
+    job -> pids[index] = pid;
+
 }
 // int _posix_bg()
 // {

@@ -28,7 +28,7 @@ int handle_job(struct ast_pipeline *pipe);
 int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg);
 static void handle_child_status(pid_t pid, int status);
 struct job *get_Job(pid_t pgid, struct list job_list);
-void _add_pid_to_job(struct job* job, pid_t pid);
+int handle_builtin(struct ast_pipeline *pipe);
 
 static void
 usage(char *progname)
@@ -69,7 +69,7 @@ struct job
 
     /* Add additional fields here if needed. */
     pid_t pgid; // stores the pgid for the job
-    pid_t pids[15]; // stores all the pids related to the job
+    
 };
 
 /* Utility functions for job list management.
@@ -286,7 +286,7 @@ static void
 handle_child_status(pid_t pid, int status)
 {
     assert(signal_is_blocked(SIGCHLD));
-
+    
     /* To be implemented.
      * Step 1. Given the pid, determine which job this pid is a part of
      *         (how to do this is not part of the provided code.)
@@ -409,16 +409,9 @@ int main(int ac, char *av[])
         }
         struct list_elem *e = list_begin(&cline->pipes);
         struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
-        struct ast_command *commands = list_entry(list_begin(&pipe->commands), struct ast_command, elem);
-        if(strcmp("jobs", commands->argv[0]) == 0)
-        {
-            for(int i =0; i < MAXJOBS; i++)
-            {
-                if(jid2job[i] == NULL) continue;
-                print_job(jid2job[i]);
-            }
-            continue;
-        }
+        if(handle_builtin(pipe) == 0) continue;
+       
+        
         handle_job(pipe);
         // ast_command_line_print(cline);      /* Output a representation of
         //                                        the entered command line */
@@ -476,12 +469,11 @@ int handle_job(struct ast_pipeline *pipe)
             leader = false;
             curJob->pgid = pgid; // add group id to the job
         }
-
-        _add_pid_to_job(curJob,pid);
+        cmd -> pid = pid; // stores process pid in the command struct;
         curJob->num_processes_alive++;
-        
-        
+           
     }
+
     // wait for all childern of pgid to exit
     if (!pipe->bg_job)
     {
@@ -554,21 +546,37 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
 
     return 0;
 }
-/**
- * \brief Helper function that adds the pid of a process in the pids array of a job
- * 
- * \param job the job the process is a part of
- * \param pid pid of the process
- */
-void _add_pid_to_job(struct job* job, pid_t pid)
+
+
+int handle_builtin(struct ast_pipeline *pipe)
 {
-    int index = job->num_processes_alive;
-    if(job -> num_processes_alive >= MAXCMDS)
+    struct ast_command *commands = list_entry(list_begin(&pipe->commands), struct ast_command, elem);
+    if(strcmp("jobs", commands->argv[0]) == 0)
     {
-        printf("Failed to add process to pids list\n");
-        return;
+        for(int i =0; i < MAXJOBS; i++)
+        {
+            if(jid2job[i] == NULL) continue;
+            print_job(jid2job[i]);
+        }
+        return 0;
     }
-    job -> pids[index] = pid;
+    else if(strcmp("kill", commands->argv[0]) == 0)
+    {
+
+    }
+    else if(strcmp("stop", commands->argv[0]) == 0)
+    {
+        
+    }
+    else if(strcmp("fg", commands->argv[0]) == 0)
+    {
+        
+    }
+    else if(strcmp("bg", commands->argv[0]) == 0)
+    {
+        
+    }
+    return -1;
 
 }
 // int _posix_bg()

@@ -121,6 +121,7 @@ ast_command_line_print(struct ast_command_line *cmdline)
          e != list_end (&cmdline->pipes); 
          e = list_next (e)) {
         struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
+        
 
         printf(" ------------- \n");
         ast_pipeline_print(pipe);

@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <spawn.h>
 
+
 /* Since the handed out code contains a number of unused functions. */
 #pragma GCC diagnostic ignored "-Wunused-function"
 
@@ -22,12 +23,13 @@
 #include "signal_support.h"
 #include "shell-ast.h"
 #include "utils.h"
+#include "job_handler.h"
 
 extern char **environ;
 int handle_job(struct ast_pipeline *pipe);
 int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg);
 static void handle_child_status(pid_t pid, int status);
-struct job *get_Job(pid_t pgid, struct list job_list);
+struct job *_get_job_from_pid(pid_t pid);
 int handle_builtin(struct ast_pipeline *pipe);
 
 static void
@@ -176,8 +178,10 @@ print_cmdline(struct ast_pipeline *pipeline)
 static void
 print_job(struct job *job)
 {
+    printf("alive: %d\t", job -> num_processes_alive);
     printf("[%d]\t%s\t\t(", job->jid, get_status(job->status));
     print_cmdline(job->pipe);
+    
     printf(")\n");
 }
 
@@ -261,23 +265,35 @@ wait_for_job(struct job *job)
 }
 
 /**
- * \brief gets the job associated with the pgid
+ * \brief gets the job with a process associated with the given pid
  *
- * \param pgid process group id
- * \param job_list the list that contains the jobs
- * \return the job that matches the pgid
+ * \param pid process  id
+ * \return the job that matches the pid
  *
  */
-struct job *get_Job(pid_t pgid, struct list job_list)
+struct job *_get_job_from_pid(pid_t pid)
 {
-    struct list_elem *e;
-    for (e = list_begin(&job_list); e != list_end(&job_list); e = list_next(e))
+    //truct list_elem *e;
+    // for (e = list_begin(&job_list); e != list_end(&job_list); e = list_next(e))
+    // {
+    //     struct job *jobinList = list_entry(e, struct job, elem);
+        
+    // }
+    for(int i= 0; i < MAXJOBS; i++)
     {
-        struct job *jobinList = list_entry(e, struct job, elem);
-        if (jobinList->pgid == pgid)
-        {
-            return jobinList;
-        }
+        if(jid2job[i] == NULL) continue;
+        struct ast_pipeline* pipe = jid2job[i] -> pipe;
+        //if(pipe == NULL) continue;
+        for (struct list_elem * e = list_begin(&pipe->commands); 
+         e != list_end(&pipe->commands); 
+         e = list_next(e)){
+            struct ast_command *cmd = list_entry(e, struct ast_command, elem);
+            if(cmd ->pid == pid) return jid2job[i];
+
+
+         }
+
+
     }
     return NULL;
 }
@@ -297,10 +313,10 @@ handle_child_status(pid_t pid, int status)
      *         If a process was stopped, save the terminal state.
      */
 
-    // gets the process group id through the pid given
-    pid_t pgid = getpgid(pid); // fix this
+
+    
     // gets the job through the process group id
-    struct job *jobNeeded = get_Job(pgid, job_list);
+    struct job *jobNeeded = _get_job_from_pid(pid);
 
     /* proccess stop for a temp time:
         User stops fg process with Ctrl-Z
@@ -426,23 +442,9 @@ int main(int ac, char *av[])
         }
         struct list_elem *e = list_begin(&cline->pipes);
         struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
-<<<<<<< HEAD
         if(handle_builtin(pipe) == 0) continue;
        
         
-=======
-        struct ast_command *commands = list_entry(list_begin(&pipe->commands), struct ast_command, elem);
-        if (strcmp("jobs", commands->argv[0]) == 0)
-        {
-            for (int i = 0; i < MAXJOBS; i++)
-            {
-                if (jid2job[i] == NULL)
-                    continue;
-                print_job(jid2job[i]);
-            }
-            continue;
-        }
->>>>>>> 0b0a56884d9e682053a7ae1b283155dfbc3b2bb2
         handle_job(pipe);
         // ast_command_line_print(cline);      /* Output a representation of
         //                                        the entered command line */
@@ -508,10 +510,12 @@ int handle_job(struct ast_pipeline *pipe)
     // wait for all childern of pgid to exit
     if (!pipe->bg_job)
     {
-        if (waitpid(-pgid, NULL, 0) == -1) // replace with wait_for_job when handle_child_status is done
-        {
-        }
+        // if (waitpid(-pgid, NULL, 0) == -1) // replace with wait_for_job when handle_child_status is done
+        // {
+        // }
+        wait_for_job(curJob);
     }
+    signal_unblock(SIGCHLD);
 
     termstate_give_terminal_back_to_shell();
     return 0;

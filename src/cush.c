@@ -23,7 +23,7 @@
 #include "signal_support.h"
 #include "shell-ast.h"
 #include "utils.h"
-#include "job_handler.h"
+//#include "job_handler.h"
 
 extern char **environ;
 int handle_job(struct ast_pipeline *pipe);
@@ -31,6 +31,7 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg);
 static void handle_child_status(pid_t pid, int status);
 struct job *_get_job_from_pid(pid_t pid);
 int handle_builtin(struct ast_pipeline *pipe);
+void delete_dead_jobs(void);
 
 static void
 usage(char *progname)
@@ -178,7 +179,7 @@ print_cmdline(struct ast_pipeline *pipeline)
 static void
 print_job(struct job *job)
 {
-    printf("alive: %d\t", job -> num_processes_alive);
+    //printf("alive: %d\t", job -> num_processes_alive);
     printf("[%d]\t%s\t\t(", job->jid, get_status(job->status));
     print_cmdline(job->pipe);
     
@@ -426,6 +427,7 @@ int main(int ac, char *av[])
         char *prompt = isatty(0) ? build_prompt() : NULL;
         char *cmdline = readline(prompt);
         free(prompt);
+        delete_dead_jobs();
 
         if (cmdline == NULL) /* User typed EOF */
             break;
@@ -582,7 +584,12 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
     return 0;
 }
 
-
+/**
+ * \brief 
+ * 
+ * \param pipe 
+ * \return int 
+ */
 int handle_builtin(struct ast_pipeline *pipe)
 {
     struct ast_command *commands = list_entry(list_begin(&pipe->commands), struct ast_command, elem);
@@ -597,6 +604,20 @@ int handle_builtin(struct ast_pipeline *pipe)
     }
     else if(strcmp("kill", commands->argv[0]) == 0)
     {
+        if(commands ->argv[1] == NULL) 
+        {
+            printf("kill: job id missing\n");
+            return 0;
+
+        }
+        int jid = atoi(commands -> argv[1]);
+        if(get_job_from_jid(jid) == NULL) 
+        {
+            printf("kill %s: No such job\n", commands -> argv[1]);
+            return 0;
+        }
+        killpg(get_job_from_jid(jid) ->pgid, SIGTERM); //question: terminated shows right after kill
+        
 
     }
     else if(strcmp("stop", commands->argv[0]) == 0)
@@ -611,15 +632,29 @@ int handle_builtin(struct ast_pipeline *pipe)
     {
         
     }
-    return -1;
+    else
+    {
+        return -1;
+    }
+    return 0;
+    
 
 }
-// int _posix_bg()
-// {
-
-// }
-
-// terminal state
-// running command; command
-// initially step // does it matter which process is run first in a pipe
-// signals
+/**
+ * \brief interates over the job list and deletes any job that has no processes alive
+ * 
+ */
+void delete_dead_jobs()
+{
+    for(int i =0; i < MAXJOBS; i++)
+    {
+        if(jid2job[i] == NULL)
+        {
+            continue;
+        }
+        if(jid2job[i] -> num_processes_alive == 0)
+        {
+            delete_job(jid2job[i]);
+        }
+    }
+}

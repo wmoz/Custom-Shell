@@ -26,7 +26,7 @@
 //#include "job_handler.h"
 
 extern char **environ;
-struct termios saved_tty_state;
+
 int handle_job(struct ast_pipeline *pipe);
 int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg);
 static void handle_child_status(pid_t pid, int status);
@@ -448,7 +448,7 @@ int main(int ac, char *av[])
        
         
         handle_job(pipe);
-        // ast_command_line_print(cline);      /* Output a representation of
+        //ast_command_line_print(cline);      /* Output a representation of
         //                                        the entered command line */
 
         /* Free the command line.
@@ -586,10 +586,16 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
 }
 
 /**
- * \brief 
+ * \brief Handles builtin commands. handles kill,fg,bg,stop,exit commands 
+ * -kill terminates a process given the jid
+ * -fg brings a background or stopped job to the foreground given jid
+ * -bg starts a stopped job into the background given jid
+ * -stop stops a running job given the jid
+ * -
  * 
  * \param pipe 
- * \return int 
+ * \return int 0 if it's a bultin command or -1 if it's not
+ * \todo clean up bg command, add exit command
  */
 int handle_builtin(struct ast_pipeline *pipe)
 {
@@ -605,19 +611,21 @@ int handle_builtin(struct ast_pipeline *pipe)
     }
     else if(strcmp("kill", commands->argv[0]) == 0)
     {
+        // no jid provided 
         if(commands ->argv[1] == NULL) 
         {
             printf("kill: job id missing\n");
             return 0;
 
         }
-        int jid = atoi(commands -> argv[1]);
+        int jid = atoi(commands -> argv[1]); // convert char* to int 
+        //job doesn't exists 
         if(get_job_from_jid(jid) == NULL) 
         {
             printf("kill %s: No such job\n", commands -> argv[1]);
             return 0;
         }
-        killpg(get_job_from_jid(jid) ->pgid, SIGTERM); //question: terminated shows right after kill
+        killpg(get_job_from_jid(jid) ->pgid, SIGTERM); // sends terminate signal
         
 
     }
@@ -635,7 +643,7 @@ int handle_builtin(struct ast_pipeline *pipe)
             printf("%s %s: No such job\n", commands -> argv[0],commands -> argv[1]);
             return 0;
         }
-        killpg(get_job_from_jid(jid) ->pgid, SIGTSTP); //
+        killpg(get_job_from_jid(jid) ->pgid, SIGTSTP); //send stop signal
         
     }
     else if(strcmp("fg", commands->argv[0]) == 0)
@@ -653,16 +661,14 @@ int handle_builtin(struct ast_pipeline *pipe)
             printf("%s %s: No such job\n", commands -> argv[0],commands -> argv[1]);
             return 0;
         }
-        
         struct job* job = get_job_from_jid(jid);
+        print_cmdline(job -> pipe); // print pipeline begining sent to the fg
+        printf("\n");
         
-        job ->status = FOREGROUND;
-        ast_pipeline_print(job->pipe);
-         
-        termstate_save(&saved_tty_state); //Question:: what we saving 
+        job->status = FOREGROUND; // update job status
         
-        termstate_give_terminal_to(&job->saved_tty_state, job->pgid);
-        killpg(job ->pgid, SIGCONT);
+        killpg(job ->pgid, SIGCONT); //sends continue signal in case the process is stopped
+        termstate_give_terminal_to(NULL, job->pgid);
         signal_block(SIGCHLD);
         wait_for_job(job);
         signal_unblock(SIGCHLD);
@@ -670,6 +676,7 @@ int handle_builtin(struct ast_pipeline *pipe)
         
         
     }
+    //needs cleaning up
     else if(strcmp("bg", commands->argv[0]) == 0)
     {
         int jid = atoi(commands -> argv[1]);

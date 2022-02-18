@@ -26,6 +26,7 @@
 //#include "job_handler.h"
 
 extern char **environ;
+struct termios saved_tty_state;
 int handle_job(struct ast_pipeline *pipe);
 int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg);
 static void handle_child_status(pid_t pid, int status);
@@ -182,7 +183,6 @@ print_job(struct job *job)
     //printf("alive: %d\t", job -> num_processes_alive);
     printf("[%d]\t%s\t\t(", job->jid, get_status(job->status));
     print_cmdline(job->pipe);
-    
     printf(")\n");
 }
 
@@ -371,7 +371,7 @@ handle_child_status(pid_t pid, int status)
         // user terminates process with kill
         if (WTERMSIG(status) == SIGTERM)
         {
-            printf("terminated");
+            printf("Terminated");
         }
         // user terminates process with kill -9
         else if (WTERMSIG(status) == SIGKILL)
@@ -389,7 +389,7 @@ handle_child_status(pid_t pid, int status)
             // aborted
             else if (WTERMSIG(status) == SIGABRT)
             {
-                printf("aborted");
+                printf("Aborted");
             }
             // floating point exception
             else if (WTERMSIG(status) == SIGFPE)
@@ -474,7 +474,7 @@ int main(int ac, char *av[])
  * \return int 0 if add was successful, -1 of adding failed
  * \todo
  * add bg command support
- * replace waitpid with wait_for_job once handle_child_Status is done
+ * replace waitpid with wait_for_job once Status is done
  *
  */
 int handle_job(struct ast_pipeline *pipe)
@@ -512,10 +512,11 @@ int handle_job(struct ast_pipeline *pipe)
     // wait for all childern of pgid to exit
     if (!pipe->bg_job)
     {
-        // if (waitpid(-pgid, NULL, 0) == -1) // replace with wait_for_job when handle_child_status is done
-        // {
-        // }
         wait_for_job(curJob);
+    }
+    else
+    {
+        printf("[%d] %d\n", curJob -> jid, curJob -> pgid);
     }
     signal_unblock(SIGCHLD);
 
@@ -622,15 +623,59 @@ int handle_builtin(struct ast_pipeline *pipe)
     }
     else if(strcmp("stop", commands->argv[0]) == 0)
     {
+        if(commands ->argv[1] == NULL) 
+        {
+            printf("%s: job id missing\n", commands -> argv[0]);
+            return 0;
+
+        }
+        int jid = atoi(commands -> argv[1]); 
+        if(get_job_from_jid(jid) == NULL) 
+        {
+            printf("%s %s: No such job\n", commands -> argv[0],commands -> argv[1]);
+            return 0;
+        }
+        killpg(get_job_from_jid(jid) ->pgid, SIGTSTP); //
         
     }
     else if(strcmp("fg", commands->argv[0]) == 0)
     {
+
+        if(commands ->argv[1] == NULL) 
+        {
+            printf("%s: job id missing\n", commands -> argv[0]);
+            return 0;
+
+        }
+        int jid = atoi(commands -> argv[1]); 
+        if(get_job_from_jid(jid) == NULL) 
+        {
+            printf("%s %s: No such job\n", commands -> argv[0],commands -> argv[1]);
+            return 0;
+        }
+        
+        struct job* job = get_job_from_jid(jid);
+        
+        job ->status = FOREGROUND;
+        ast_pipeline_print(job->pipe);
+         
+        termstate_save(&saved_tty_state); //Question:: what we saving 
+        
+        termstate_give_terminal_to(&job->saved_tty_state, job->pgid);
+        killpg(job ->pgid, SIGCONT);
+        signal_block(SIGCHLD);
+        wait_for_job(job);
+        signal_unblock(SIGCHLD);
+        termstate_give_terminal_back_to_shell();
+        
         
     }
     else if(strcmp("bg", commands->argv[0]) == 0)
     {
-        
+        int jid = atoi(commands -> argv[1]);
+        struct job* job = get_job_from_jid(jid);
+        job ->status = BACKGROUND;
+        killpg(get_job_from_jid(jid) ->pgid, SIGCONT); 
     }
     else
     {
@@ -658,3 +703,11 @@ void delete_dead_jobs()
         }
     }
 }
+
+
+
+//when to block and unblock
+// what is the bg command used for 
+// stop vs kill?
+//terminal state/ shoudl you save termstate for every process
+

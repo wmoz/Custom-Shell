@@ -14,6 +14,8 @@
 #include <sys/wait.h>
 #include <assert.h>
 #include <spawn.h>
+#include <fcntl.h>
+
 
 
 /* Since the handed out code contains a number of unused functions. */
@@ -25,14 +27,18 @@
 #include "utils.h"
 //#include "job_handler.h"
 
+#define IO_IN 0
+#define IO_OUT 1
+#define IO_APP 2
 extern char **environ;
 
 int handle_job(struct ast_pipeline *pipe);
-int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg);
+int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg,   posix_spawn_file_actions_t* fa);
 static void handle_child_status(pid_t pid, int status);
 struct job *_get_job_from_pid(pid_t pid);
 int handle_builtin(struct ast_pipeline *pipe);
 void delete_dead_jobs(void);
+int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int __ioflag);
 
 static void
 usage(char *progname)
@@ -448,7 +454,7 @@ int main(int ac, char *av[])
        
         
         handle_job(pipe);
-        //ast_command_line_print(cline);      /* Output a representation of
+       // ast_command_line_print(cline);      /* Output a representation of
         //                                        the entered command line */
 
         /* Free the command line.
@@ -480,23 +486,48 @@ int main(int ac, char *av[])
 int handle_job(struct ast_pipeline *pipe)
 {
     bool leader = true;
+    bool fail = false;
     pid_t pid;
     pid_t pgid = 0;
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa); // ensure it is never passed down to posix_spawnp unintialized
 
     signal_block(SIGCHLD); // Question:: when to unblock signal?
 
     struct job *curJob = add_job(pipe);
     struct list_elem *e = list_begin(&pipe->commands);
-
+    //ast_pipeline_print(pipe);
     // iterate over all commands in a pipe
     for (; e != list_end(&pipe->commands); e = list_next(e))
     {
         struct ast_command *cmd = list_entry(e, struct ast_command, elem); // Question:: ask about elem
 
-        // handles running fg and bg process
-        if (_posix_spawn_run(&pid, pgid, cmd->argv, leader, !pipe->bg_job) != 0)
-            return -1; // Question:: what happens if a command fails
+        // handles io redirecting for input file
+        if(pipe->iored_input != NULL) 
+        {
+            if(_set_up_io(&fa, pipe -> iored_input,  IO_IN) != 0)
+            {
+                posix_spawn_file_actions_init(&fa);
+                
+            }
 
+        }
+        //handles io redirecting for output file
+        if(pipe->iored_output != NULL)
+        {
+            if(_set_up_io(&fa,pipe -> iored_output,  IO_OUT) != 0)
+                posix_spawn_file_actions_init(&fa);
+
+
+        } 
+        //handles running fg and bg process
+        if (_posix_spawn_run(&pid, pgid, cmd->argv, leader, !pipe->bg_job, &fa) != 0)
+        {
+            fail = true;
+            delete_job(curJob);
+        }
+            
+            
         // run only after first command
         if (e == list_begin(&pipe->commands))
         {
@@ -510,18 +541,53 @@ int handle_job(struct ast_pipeline *pipe)
     }
 
     // wait for all childern of pgid to exit
-    if (!pipe->bg_job)
+    if (!pipe->bg_job && !fail)
     {
         wait_for_job(curJob);
     }
     else
     {
-        printf("[%d] %d\n", curJob -> jid, curJob -> pgid);
+        if(!fail)printf("[%d] %d\n", curJob -> jid, curJob -> pgid);
     }
     signal_unblock(SIGCHLD);
+    posix_spawn_file_actions_destroy(&fa);
 
     termstate_give_terminal_back_to_shell();
     return 0;
+}
+/**
+ * \brief handles setting up io redirection by creating a posix_Spawn_file_actions struct.
+ * supports 2 modes set by the flags:
+ *  - IO_IN for using a file as input
+ * - IO_OUT for using file as output
+ * 
+ * \param fa pointer to posix_spawn_file_actions struct
+ * \param iored file name that will be used as input or output
+ * \param __ioflag type of redirection
+ * \return int return 0 if esetup was succesful & -1 if an error occured 
+ */
+int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int __ioflag)
+{
+    int err = 0;
+    if(__ioflag == IO_IN)
+    {
+         err = posix_spawn_file_actions_addopen(fa, STDIN_FILENO, iored, O_RDONLY, 0);
+        if(err != 0) printf("Could not open %s, reading from stdin No such file or directory", iored);
+
+    }
+    
+    // Concern:: when running cat t > test and t doesn't existed cat output goes to test not terminal
+    else if (__ioflag == IO_OUT) 
+    {
+        err = posix_spawn_file_actions_addopen(fa, STDOUT_FILENO, iored, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP);
+        
+        //posix_spawn_file_actions_addclose(fa, STDOUT_FILENO); 
+    }
+   
+    //if(posix_spawn_file_actions_adddup2(fa,STDOUT_FILENO, STDERR_FILENO)!=0 )printf("error\n");
+    
+    return err;
+
 }
 
 /**
@@ -537,7 +603,7 @@ int handle_job(struct ast_pipeline *pipe)
  * \return int 0 if process is succesfully run, -1 if process fails
  *
  */
-int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
+int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg, posix_spawn_file_actions_t* fa)
 {
     posix_spawnattr_t attr;
     // intialize poxis_spawn attributes
@@ -576,7 +642,8 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
         return -1;
     }
     // runs the process if return != 0 the process failed to run
-    if (posix_spawnp(pid, argv[0], NULL, &attr, argv, environ) != 0)
+    
+    if (posix_spawnp(pid, argv[0], fa, &attr, argv, environ) != 0)
     {
         printf("%s: No such file or directory\n", argv[0]);
         return -1;
@@ -591,7 +658,7 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
  * -fg brings a background or stopped job to the foreground given jid
  * -bg starts a stopped job into the background given jid
  * -stop stops a running job given the jid
- * -
+ * -exit exits out of the program
  * 
  * \param pipe 
  * \return int 0 if it's a bultin command or -1 if it's not
@@ -684,6 +751,10 @@ int handle_builtin(struct ast_pipeline *pipe)
         job ->status = BACKGROUND;
         killpg(get_job_from_jid(jid) ->pgid, SIGCONT); 
     }
+    else if(strcmp("exit", commands ->argv[0]) == 0)
+    {
+        exit(EXIT_SUCCESS);
+    }
     else
     {
         return -1;
@@ -713,8 +784,4 @@ void delete_dead_jobs()
 
 
 
-//when to block and unblock
-// what is the bg command used for 
-// stop vs kill?
-//terminal state/ shoudl you save termstate for every process
 

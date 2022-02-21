@@ -39,6 +39,10 @@ struct job *_get_job_from_pid(pid_t pid);
 int handle_builtin(struct ast_pipeline *pipe);
 void delete_dead_jobs(void);
 int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int __ioflag);
+int _close_fds(int* fds, size_t length);
+int _set_up_pipe(posix_spawn_file_actions_t* fa, int* newfds, int iteration, int cmd_len);
+int* _create_pipes(int num);
+
 
 static void
 usage(char *progname)
@@ -483,12 +487,30 @@ int main(int ac, char *av[])
  * replace waitpid with wait_for_job once Status is done
  *
  */
+
+// failing fds when cmd_len = 0 ( running a normal command)
+// even number  pipes?
 int handle_job(struct ast_pipeline *pipe)
 {
+    
     bool leader = true;
     bool fail = false;
     pid_t pid;
     pid_t pgid = 0;
+    int* fds = NULL;
+    size_t cmd_len = list_size(&pipe->commands);
+    size_t fd_len;
+    if(cmd_len > 1) 
+    {
+        fd_len = (cmd_len-1)*2;
+        fds = _create_pipes(fd_len);
+
+    }
+    
+    else fd_len = 1;
+    size_t itr = 0;
+    
+
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa); // ensure it is never passed down to posix_spawnp unintialized
 
@@ -500,6 +522,7 @@ int handle_job(struct ast_pipeline *pipe)
     // iterate over all commands in a pipe
     for (; e != list_end(&pipe->commands); e = list_next(e))
     {
+        posix_spawn_file_actions_init(&fa);
         struct ast_command *cmd = list_entry(e, struct ast_command, elem); // Question:: ask about elem
 
         // handles io redirecting for input file
@@ -519,6 +542,12 @@ int handle_job(struct ast_pipeline *pipe)
                 posix_spawn_file_actions_init(&fa);
 
 
+        }
+        if(cmd_len > 1)
+        {
+            
+            _set_up_pipe(&fa,fds,itr,cmd_len);
+            itr++;
         } 
         //handles running fg and bg process
         if (_posix_spawn_run(&pid, pgid, cmd->argv, leader, !pipe->bg_job, &fa) != 0)
@@ -526,6 +555,7 @@ int handle_job(struct ast_pipeline *pipe)
             fail = true;
             delete_job(curJob);
         }
+       
             
             
         // run only after first command
@@ -539,7 +569,7 @@ int handle_job(struct ast_pipeline *pipe)
         curJob->num_processes_alive++;
            
     }
-
+    _close_fds(fds, fd_len);
     // wait for all childern of pgid to exit
     if (!pipe->bg_job && !fail)
     {
@@ -551,8 +581,89 @@ int handle_job(struct ast_pipeline *pipe)
     }
     signal_unblock(SIGCHLD);
     posix_spawn_file_actions_destroy(&fa);
-
+    
     termstate_give_terminal_back_to_shell();
+    free(fds);
+    return 0;
+}
+
+/**
+ * \brief function creates pipes given the number of pipes needed
+ *
+ * \param num number of pipes to create
+ * \return returns a pointer to an array storing the fds for the pipes
+ * 
+ *
+ */
+
+int* _create_pipes(int num)
+{
+    int * fds = malloc(num*sizeof(int));
+    for(int i =0; i < num; i+=2)
+    {
+        pipe2(fds + i, O_CLOEXEC);
+    }
+    return fds;
+}
+/**
+ * \brief sets up pipe configartions for process being run. an incoming process can have
+ * one of three states:
+ * - first command: output mapped to the write side of the pipe
+ * -last command: input is mapped to the read side of the pipe
+ * - middle commands: 
+ *      - input is mapped the read side of the pipe with the preecding command
+ *      - output is mapped to the write side of the pipe with the succeeding command 
+ *
+ * \param fa pointer to posix_spawn_file_actions holding process data
+ * \param newfd pipefd
+ * \param iteration the command index 
+ * \param cmd_len number of commands in the pipeline
+ * \return int 0 if it was successful, -1 of adding failed
+
+ *
+ */
+int _set_up_pipe(posix_spawn_file_actions_t* fa, int* newfds, int iteration, int cmd_len)
+{
+    static int fd_index = 0; //index in teh newfds array
+    
+    //intial command
+    if(iteration == 0)
+    {
+        posix_spawn_file_actions_adddup2(fa,   newfds[fd_index +1], STDOUT_FILENO);
+    
+    }
+    //last command 
+    else if(iteration == cmd_len -1)
+    {
+        posix_spawn_file_actions_adddup2(fa, newfds[fd_index], STDIN_FILENO);
+        fd_index = 0;
+    }
+    //middle commands 
+    else 
+    {
+        posix_spawn_file_actions_adddup2(fa,newfds[fd_index], STDIN_FILENO);
+        fd_index+=2;
+        posix_spawn_file_actions_adddup2(fa, newfds[fd_index+1], STDOUT_FILENO);
+    }
+
+    return 0;
+
+}
+/**
+ * \brief close all file descriptors in a given array
+ *
+ * \param fds array of file descriptors to be closed
+ * \param length length of the fds array
+ * \return int 0 if close was successful, -1 of closing failed
+ *
+ */
+int _close_fds(int* fds, size_t length)
+{
+    if(fds == NULL) return 0;
+    for(int i = 0; i < length; i++)
+    {
+        close(fds[i]);
+    }
     return 0;
 }
 /**
@@ -777,6 +888,7 @@ void delete_dead_jobs()
         }
         if(jid2job[i] -> num_processes_alive == 0)
         {
+            print_job(jid2job[i]);
             delete_job(jid2job[i]);
         }
     }

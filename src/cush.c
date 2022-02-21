@@ -15,6 +15,8 @@
 #include <assert.h>
 #include <spawn.h>
 
+#include <readline/history.h>
+
 
 /* Since the handed out code contains a number of unused functions. */
 #pragma GCC diagnostic ignored "-Wunused-function"
@@ -48,7 +50,16 @@ usage(char *progname)
 static char *
 build_prompt(void)
 {
-    return strdup("cush> ");
+    char hostname[31];
+    gethostname(hostname, 31);
+
+    char tempPath[101];
+    getcwd(tempPath, 101);
+    char* path = basename(tempPath);
+
+    char buffer[200];
+    snprintf(buffer, sizeof buffer, "<@%s in %s> ", hostname, path);
+    return strdup(buffer);
 }
 
 enum job_status
@@ -402,6 +413,9 @@ handle_child_status(pid_t pid, int status)
 
 int main(int ac, char *av[])
 {
+    //initializes the interactive variables for GNU History Library
+    using_history(); 
+    
     int opt;
 
     /* Process command-line arguments. See getopt(3) */
@@ -683,6 +697,12 @@ int handle_builtin(struct ast_pipeline *pipe)
         struct job* job = get_job_from_jid(jid);
         job ->status = BACKGROUND;
         killpg(get_job_from_jid(jid) ->pgid, SIGCONT); 
+    }
+    else if (strcmp("history", commands->argv[0]) == 0)
+    {
+        
+        /* code */
+        //print previous commands
     }
     else
     {

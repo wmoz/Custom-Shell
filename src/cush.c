@@ -414,7 +414,7 @@ handle_child_status(pid_t pid, int status)
 int main(int ac, char *av[])
 {
     //initializes the interactive variables for GNU History Library
-    using_history(); 
+    //using_history(); 
     
     int opt;
 

@@ -14,9 +14,9 @@
 #include <sys/wait.h>
 #include <assert.h>
 #include <spawn.h>
+#include <pwd.h>
 
 #include <readline/history.h>
-
 
 /* Since the handed out code contains a number of unused functions. */
 #pragma GCC diagnostic ignored "-Wunused-function"
@@ -50,15 +50,22 @@ usage(char *progname)
 static char *
 build_prompt(void)
 {
+    //getting the hostname
     char hostname[31];
     gethostname(hostname, 31);
 
+    //getting the current directory
     char tempPath[101];
     getcwd(tempPath, 101);
-    char* path = basename(tempPath);
+    char *path = basename(tempPath);
 
+    //get username
+    struct passwd *pw = getpwuid(getuid());
+
+    //write into buffer
     char buffer[200];
-    snprintf(buffer, sizeof buffer, "<@%s in %s> ", hostname, path);
+    snprintf(buffer, sizeof buffer, "<%s@%s %s>$ ", pw->pw_name, hostname, path);
+
     return strdup(buffer);
 }
 
@@ -84,7 +91,6 @@ struct job
 
     /* Add additional fields here if needed. */
     pid_t pgid; // stores the pgid for the job
-    
 };
 
 /* Utility functions for job list management.
@@ -191,7 +197,7 @@ print_cmdline(struct ast_pipeline *pipeline)
 static void
 print_job(struct job *job)
 {
-    //printf("alive: %d\t", job -> num_processes_alive);
+    // printf("alive: %d\t", job -> num_processes_alive);
     printf("[%d]\t%s\t\t(", job->jid, get_status(job->status));
     print_cmdline(job->pipe);
     printf(")\n");
@@ -285,27 +291,26 @@ wait_for_job(struct job *job)
  */
 struct job *_get_job_from_pid(pid_t pid)
 {
-    //truct list_elem *e;
-    // for (e = list_begin(&job_list); e != list_end(&job_list); e = list_next(e))
-    // {
-    //     struct job *jobinList = list_entry(e, struct job, elem);
-        
+    // truct list_elem *e;
+    //  for (e = list_begin(&job_list); e != list_end(&job_list); e = list_next(e))
+    //  {
+    //      struct job *jobinList = list_entry(e, struct job, elem);
+
     // }
-    for(int i= 0; i < MAXJOBS; i++)
+    for (int i = 0; i < MAXJOBS; i++)
     {
-        if(jid2job[i] == NULL) continue;
-        struct ast_pipeline* pipe = jid2job[i] -> pipe;
-        //if(pipe == NULL) continue;
-        for (struct list_elem * e = list_begin(&pipe->commands); 
-         e != list_end(&pipe->commands); 
-         e = list_next(e)){
+        if (jid2job[i] == NULL)
+            continue;
+        struct ast_pipeline *pipe = jid2job[i]->pipe;
+        // if(pipe == NULL) continue;
+        for (struct list_elem *e = list_begin(&pipe->commands);
+             e != list_end(&pipe->commands);
+             e = list_next(e))
+        {
             struct ast_command *cmd = list_entry(e, struct ast_command, elem);
-            if(cmd ->pid == pid) return jid2job[i];
-
-
-         }
-
-
+            if (cmd->pid == pid)
+                return jid2job[i];
+        }
     }
     return NULL;
 }
@@ -314,7 +319,7 @@ static void
 handle_child_status(pid_t pid, int status)
 {
     assert(signal_is_blocked(SIGCHLD));
-    
+
     /* To be implemented.
      * Step 1. Given the pid, determine which job this pid is a part of
      *         (how to do this is not part of the provided code.)
@@ -325,8 +330,6 @@ handle_child_status(pid_t pid, int status)
      *         If a process was stopped, save the terminal state.
      */
 
-
-    
     // gets the job through the process group id
     struct job *jobNeeded = _get_job_from_pid(pid);
 
@@ -413,9 +416,9 @@ handle_child_status(pid_t pid, int status)
 
 int main(int ac, char *av[])
 {
-    //initializes the interactive variables for GNU History Library
-    //using_history(); 
-    
+    // initializes the interactive variables for GNU History Library
+    using_history();
+
     int opt;
 
     /* Process command-line arguments. See getopt(3) */
@@ -446,7 +449,24 @@ int main(int ac, char *av[])
         if (cmdline == NULL) /* User typed EOF */
             break;
 
-        struct ast_command_line *cline = ast_parse_command_line(cmdline);
+        // Setting up the history list using the sample code given in the GNU Library 
+        char *expansion;
+        //int result;
+
+        history_expand(cmdline, &expansion);
+        //result = history_expand(cmdline, &expansion);
+        // if (result)
+        //     fprintf(stderr, "%s\n", expansion);
+
+        // if (result < 0 || result == 2)
+        // {
+        //     free(expansion);
+        //     continue;
+        // }
+
+        add_history(expansion);
+
+        struct ast_command_line *cline = ast_parse_command_line(expansion);
         free(cmdline);
         if (cline == NULL) /* Error in command line */
             continue;
@@ -458,12 +478,12 @@ int main(int ac, char *av[])
         }
         struct list_elem *e = list_begin(&cline->pipes);
         struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
-        if(handle_builtin(pipe) == 0) continue;
-       
-        
+        if (handle_builtin(pipe) == 0)
+            continue;
+
         handle_job(pipe);
-        //ast_command_line_print(cline);      /* Output a representation of
-        //                                        the entered command line */
+        // ast_command_line_print(cline);      /* Output a representation of
+        //                                         the entered command line */
 
         /* Free the command line.
          * This will free the ast_pipeline objects still contained
@@ -474,7 +494,6 @@ int main(int ac, char *av[])
          * Otherwise, freeing here will cause use-after-free errors.
          */
         free(cline);
-  
     }
     return 0;
 }
@@ -518,9 +537,8 @@ int handle_job(struct ast_pipeline *pipe)
             leader = false;
             curJob->pgid = pgid; // add group id to the job
         }
-        cmd -> pid = pid; // stores process pid in the command struct;
+        cmd->pid = pid; // stores process pid in the command struct;
         curJob->num_processes_alive++;
-           
     }
 
     // wait for all childern of pgid to exit
@@ -530,7 +548,7 @@ int handle_job(struct ast_pipeline *pipe)
     }
     else
     {
-        printf("[%d] %d\n", curJob -> jid, curJob -> pgid);
+        printf("[%d] %d\n", curJob->jid, curJob->pgid);
     }
     signal_unblock(SIGCHLD);
 
@@ -600,141 +618,134 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
 }
 
 /**
- * \brief Handles builtin commands. handles kill,fg,bg,stop,exit commands 
+ * \brief Handles builtin commands. handles kill,fg,bg,stop,exit commands
  * -kill terminates a process given the jid
  * -fg brings a background or stopped job to the foreground given jid
  * -bg starts a stopped job into the background given jid
  * -stop stops a running job given the jid
  * -
- * 
- * \param pipe 
+ *
+ * \param pipe
  * \return int 0 if it's a bultin command or -1 if it's not
  * \todo clean up bg command, add exit command
  */
 int handle_builtin(struct ast_pipeline *pipe)
 {
     struct ast_command *commands = list_entry(list_begin(&pipe->commands), struct ast_command, elem);
-    if(strcmp("jobs", commands->argv[0]) == 0)
+    if (strcmp("jobs", commands->argv[0]) == 0)
     {
-        for(int i =0; i < MAXJOBS; i++)
+        for (int i = 0; i < MAXJOBS; i++)
         {
-            if(jid2job[i] == NULL) continue;
+            if (jid2job[i] == NULL)
+                continue;
             print_job(jid2job[i]);
         }
         return 0;
     }
-    else if(strcmp("kill", commands->argv[0]) == 0)
+    else if (strcmp("kill", commands->argv[0]) == 0)
     {
-        // no jid provided 
-        if(commands ->argv[1] == NULL) 
+        // no jid provided
+        if (commands->argv[1] == NULL)
         {
             printf("kill: job id missing\n");
             return 0;
-
         }
-        int jid = atoi(commands -> argv[1]); // convert char* to int 
-        //job doesn't exists 
-        if(get_job_from_jid(jid) == NULL) 
+        int jid = atoi(commands->argv[1]); // convert char* to int
+        // job doesn't exists
+        if (get_job_from_jid(jid) == NULL)
         {
-            printf("kill %s: No such job\n", commands -> argv[1]);
+            printf("kill %s: No such job\n", commands->argv[1]);
             return 0;
         }
-        killpg(get_job_from_jid(jid) ->pgid, SIGTERM); // sends terminate signal
-        
-
+        killpg(get_job_from_jid(jid)->pgid, SIGTERM); // sends terminate signal
     }
-    else if(strcmp("stop", commands->argv[0]) == 0)
+    else if (strcmp("stop", commands->argv[0]) == 0)
     {
-        if(commands ->argv[1] == NULL) 
+        if (commands->argv[1] == NULL)
         {
-            printf("%s: job id missing\n", commands -> argv[0]);
-            return 0;
-
-        }
-        int jid = atoi(commands -> argv[1]); 
-        if(get_job_from_jid(jid) == NULL) 
-        {
-            printf("%s %s: No such job\n", commands -> argv[0],commands -> argv[1]);
+            printf("%s: job id missing\n", commands->argv[0]);
             return 0;
         }
-        killpg(get_job_from_jid(jid) ->pgid, SIGTSTP); //send stop signal
-        
+        int jid = atoi(commands->argv[1]);
+        if (get_job_from_jid(jid) == NULL)
+        {
+            printf("%s %s: No such job\n", commands->argv[0], commands->argv[1]);
+            return 0;
+        }
+        killpg(get_job_from_jid(jid)->pgid, SIGTSTP); // send stop signal
     }
-    else if(strcmp("fg", commands->argv[0]) == 0)
+    else if (strcmp("fg", commands->argv[0]) == 0)
     {
 
-        if(commands ->argv[1] == NULL) 
+        if (commands->argv[1] == NULL)
         {
-            printf("%s: job id missing\n", commands -> argv[0]);
-            return 0;
-
-        }
-        int jid = atoi(commands -> argv[1]); 
-        if(get_job_from_jid(jid) == NULL) 
-        {
-            printf("%s %s: No such job\n", commands -> argv[0],commands -> argv[1]);
+            printf("%s: job id missing\n", commands->argv[0]);
             return 0;
         }
-        struct job* job = get_job_from_jid(jid);
-        print_cmdline(job -> pipe); // print pipeline begining sent to the fg
+        int jid = atoi(commands->argv[1]);
+        if (get_job_from_jid(jid) == NULL)
+        {
+            printf("%s %s: No such job\n", commands->argv[0], commands->argv[1]);
+            return 0;
+        }
+        struct job *job = get_job_from_jid(jid);
+        print_cmdline(job->pipe); // print pipeline begining sent to the fg
         printf("\n");
-        
+
         job->status = FOREGROUND; // update job status
-        
-        killpg(job ->pgid, SIGCONT); //sends continue signal in case the process is stopped
+
+        killpg(job->pgid, SIGCONT); // sends continue signal in case the process is stopped
         termstate_give_terminal_to(NULL, job->pgid);
         signal_block(SIGCHLD);
         wait_for_job(job);
         signal_unblock(SIGCHLD);
         termstate_give_terminal_back_to_shell();
-        
-        
     }
-    //needs cleaning up
-    else if(strcmp("bg", commands->argv[0]) == 0)
+    // needs cleaning up
+    else if (strcmp("bg", commands->argv[0]) == 0)
     {
-        int jid = atoi(commands -> argv[1]);
-        struct job* job = get_job_from_jid(jid);
-        job ->status = BACKGROUND;
-        killpg(get_job_from_jid(jid) ->pgid, SIGCONT); 
+        int jid = atoi(commands->argv[1]);
+        struct job *job = get_job_from_jid(jid);
+        job->status = BACKGROUND;
+        killpg(get_job_from_jid(jid)->pgid, SIGCONT);
     }
     else if (strcmp("history", commands->argv[0]) == 0)
     {
-        
+
         /* code */
-        //print previous commands
+        // print previous commands
+        HIST_ENTRY** historyList = history_list();
+        for (int i = 0; i < history_length; i++)
+        {
+            printf("    %d %s\n", i, historyList[i]->line);
+        }
     }
     else
     {
         return -1;
     }
     return 0;
-    
-
 }
 /**
  * \brief interates over the job list and deletes any job that has no processes alive
- * 
+ *
  */
 void delete_dead_jobs()
 {
-    for(int i =0; i < MAXJOBS; i++)
+    for (int i = 0; i < MAXJOBS; i++)
     {
-        if(jid2job[i] == NULL)
+        if (jid2job[i] == NULL)
         {
             continue;
         }
-        if(jid2job[i] -> num_processes_alive == 0)
+        if (jid2job[i]->num_processes_alive == 0)
         {
             delete_job(jid2job[i]);
         }
     }
 }
 
-
-
-//when to block and unblock
-// what is the bg command used for 
-// stop vs kill?
-//terminal state/ shoudl you save termstate for every process
-
+// when to block and unblock
+//  what is the bg command used for
+//  stop vs kill?
+// terminal state/ shoudl you save termstate for every process

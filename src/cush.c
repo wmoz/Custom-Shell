@@ -709,14 +709,14 @@ int handle_builtin(struct ast_pipeline *pipe)
         job->status = BACKGROUND;
         killpg(get_job_from_jid(jid)->pgid, SIGCONT);
     }
+    // history command
     else if (strcmp("history", commands->argv[0]) == 0)
     {
-
-        /* code */
-        // print previous commands
+        //gets the history list that includes the commands
         HIST_ENTRY** historyList = history_list();
         for (int i = 0; i < history_length; i++)
         {
+            //printing the commands
             printf("    %d %s\n", i, historyList[i]->line);
         }
     }

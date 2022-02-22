@@ -27,14 +27,22 @@
 #include "utils.h"
 //#include "job_handler.h"
 
+#define IO_IN 0
+#define IO_OUT 1
+#define IO_APP 2
 extern char **environ;
 
 int handle_job(struct ast_pipeline *pipe);
-int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg);
+int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg,   posix_spawn_file_actions_t* fa);
 static void handle_child_status(pid_t pid, int status);
 struct job *_get_job_from_pid(pid_t pid);
 int handle_builtin(struct ast_pipeline *pipe);
 void delete_dead_jobs(void);
+int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int append, int dup_stdout_to_stdin, int __ioflag);
+int _close_fds(int* fds, size_t length);
+int _set_up_pipe(posix_spawn_file_actions_t* fa, int* newfds, int iteration, int cmd_len);
+int* _create_pipes(int num);
+
 
 static void
 usage(char *progname)
@@ -77,6 +85,7 @@ enum job_status
     STOPPED,       /* job is stopped via SIGSTOP */
     NEEDSTERMINAL, /* job is stopped because it was a background job
                       and requires exclusive terminal access */
+    DONE            /* Job in the background has finished */ 
 };
 
 struct job
@@ -171,6 +180,8 @@ get_status(enum job_status status)
         return "Stopped";
     case NEEDSTERMINAL:
         return "Stopped (tty)";
+    case DONE:
+        return "Done";
     default:
         return "Unknown";
     }
@@ -368,6 +379,11 @@ handle_child_status(pid_t pid, int status)
                 termstate_give_terminal_back_to_shell();
             }
         }
+        else if(jobNeeded -> status == BACKGROUND && jobNeeded -> num_processes_alive == 1)
+        {
+            jobNeeded -> status = DONE;
+        }
+
         jobNeeded->num_processes_alive--;
     }
     // user terminates process
@@ -444,7 +460,7 @@ int main(int ac, char *av[])
         char *prompt = isatty(0) ? build_prompt() : NULL;
         char *cmdline = readline(prompt);
         free(prompt);
-        delete_dead_jobs();
+        
 
         if (cmdline == NULL) /* User typed EOF */
             break;
@@ -477,13 +493,17 @@ int main(int ac, char *av[])
             continue;
         }
         struct list_elem *e = list_begin(&cline->pipes);
-        struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
-        if (handle_builtin(pipe) == 0)
-            continue;
+        for(; e != list_end(&cline -> pipes); e = list_next(e))
+        {
+            struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
+            if(handle_builtin(pipe) == 0) continue;
+            handle_job(pipe);
 
-        handle_job(pipe);
-        // ast_command_line_print(cline);      /* Output a representation of
-        //                                         the entered command line */
+        }
+
+        //ast_command_line_print(cline);      /* Output a representation of
+        //                                        the entered command line */
+        delete_dead_jobs();
 
         /* Free the command line.
          * This will free the ast_pipeline objects still contained
@@ -510,26 +530,79 @@ int main(int ac, char *av[])
  * replace waitpid with wait_for_job once Status is done
  *
  */
+
+// failing fds when cmd_len = 0 ( running a normal command)
+// even number  pipes?
 int handle_job(struct ast_pipeline *pipe)
 {
+    
     bool leader = true;
+    bool fail = false;
     pid_t pid;
     pid_t pgid = 0;
+    int* fds = NULL;
+    size_t cmd_len = list_size(&pipe->commands);
+    size_t fd_len;
+    if(cmd_len > 1) 
+    {
+        fd_len = (cmd_len-1)*2;
+        fds = _create_pipes(fd_len);
+
+    }
+    
+    else fd_len = 1;
+    size_t itr = 0;
+    
+
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa); // ensure it is never passed down to posix_spawnp unintialized
 
     signal_block(SIGCHLD); // Question:: when to unblock signal?
 
     struct job *curJob = add_job(pipe);
     struct list_elem *e = list_begin(&pipe->commands);
-
+    //ast_pipeline_print(pipe);
     // iterate over all commands in a pipe
     for (; e != list_end(&pipe->commands); e = list_next(e))
     {
+        posix_spawn_file_actions_init(&fa);
         struct ast_command *cmd = list_entry(e, struct ast_command, elem); // Question:: ask about elem
 
-        // handles running fg and bg process
-        if (_posix_spawn_run(&pid, pgid, cmd->argv, leader, !pipe->bg_job) != 0)
-            return -1; // Question:: what happens if a command fails
+        // handles io redirecting for input file
+        if(pipe->iored_input != NULL) 
+        {
+            if(_set_up_io(&fa, pipe -> iored_input, pipe ->append_to_output, cmd -> dup_stderr_to_stdout, IO_IN) != 0)
+            {
+                posix_spawn_file_actions_init(&fa);
+                
+            }
 
+        }
+        //handles io redirecting for output file
+        if(pipe->iored_output != NULL)
+        {
+            if(_set_up_io(&fa,pipe -> iored_output, pipe ->append_to_output, cmd ->dup_stderr_to_stdout,  IO_OUT) != 0)
+                posix_spawn_file_actions_init(&fa);
+
+
+        }
+        if(cmd_len > 1)
+        {
+            
+            _set_up_pipe(&fa,fds,itr,cmd_len);
+            itr++;
+        } 
+        if(cmd ->dup_stderr_to_stdout)
+        {
+            posix_spawn_file_actions_adddup2(&fa, STDOUT_FILENO, STDERR_FILENO);
+        }
+        //handles running fg and bg process
+        if (_posix_spawn_run(&pid, pgid, cmd->argv, leader, !pipe->bg_job, &fa) != 0)
+        {
+            fail = true;
+            delete_job(curJob);
+            break;
+        }  
         // run only after first command
         if (e == list_begin(&pipe->commands))
         {
@@ -540,20 +613,153 @@ int handle_job(struct ast_pipeline *pipe)
         cmd->pid = pid; // stores process pid in the command struct;
         curJob->num_processes_alive++;
     }
-
+    _close_fds(fds, fd_len);
     // wait for all childern of pgid to exit
-    if (!pipe->bg_job)
+    if (!pipe->bg_job && !fail)
     {
         wait_for_job(curJob);
     }
     else
     {
-        printf("[%d] %d\n", curJob->jid, curJob->pgid);
+        if(!fail)
+        {
+            printf("[%d] %d\n", curJob -> jid, curJob -> pgid);
+        }
     }
     signal_unblock(SIGCHLD);
-
+    posix_spawn_file_actions_destroy(&fa);
+    
     termstate_give_terminal_back_to_shell();
+    free(fds);
     return 0;
+}
+
+/**
+ * \brief function creates pipes given the number of pipes needed
+ *
+ * \param num number of pipes to create
+ * \return returns a pointer to an array storing the fds for the pipes
+ * 
+ *
+ */
+
+int* _create_pipes(int num)
+{
+    int * fds = malloc(num*sizeof(int));
+    for(int i =0; i < num; i+=2)
+    {
+        pipe2(fds + i, O_CLOEXEC);
+    }
+    return fds;
+}
+/**
+ * \brief sets up pipe configartions for process being run. an incoming process can have
+ * one of three states:
+ * - first command: output mapped to the write side of the pipe
+ * -last command: input is mapped to the read side of the pipe
+ * - middle commands: 
+ *      - input is mapped the read side of the pipe with the preecding command
+ *      - output is mapped to the write side of the pipe with the succeeding command 
+ *
+ * \param fa pointer to posix_spawn_file_actions holding process data
+ * \param newfd pipefd
+ * \param iteration the command index 
+ * \param cmd_len number of commands in the pipeline
+ * \return int 0 if it was successful, -1 of adding failed
+
+ *
+ */
+int _set_up_pipe(posix_spawn_file_actions_t* fa, int* newfds, int iteration, int cmd_len)
+{
+    static int fd_index = 0; //index in teh newfds array
+    
+    //intial command
+    if(iteration == 0)
+    {
+        posix_spawn_file_actions_adddup2(fa,   newfds[fd_index +1], STDOUT_FILENO);
+    
+    }
+    //last command 
+    else if(iteration == cmd_len -1)
+    {
+        posix_spawn_file_actions_adddup2(fa, newfds[fd_index], STDIN_FILENO);
+        fd_index = 0;
+    }
+    //middle commands 
+    else 
+    {
+        posix_spawn_file_actions_adddup2(fa,newfds[fd_index], STDIN_FILENO);
+        fd_index+=2;
+        posix_spawn_file_actions_adddup2(fa, newfds[fd_index+1], STDOUT_FILENO);
+    }
+
+    return 0;
+
+}
+/**
+ * \brief close all file descriptors in a given array
+ *
+ * \param fds array of file descriptors to be closed
+ * \param length length of the fds array
+ * \return int 0 if close was successful, -1 of closing failed
+ *
+ */
+int _close_fds(int* fds, size_t length)
+{
+    if(fds == NULL) return 0;
+    for(int i = 0; i < length; i++)
+    {
+        close(fds[i]);
+    }
+    return 0;
+}
+/**
+ * \brief handles setting up io redirection by creating a posix_Spawn_file_actions struct.
+ * supports 2 modes set by the flags:
+ *  - IO_IN for using a file as input
+ * - IO_OUT for using file as output
+ * 
+ * \param fa pointer to posix_spawn_file_actions struct
+ * \param iored file name that will be used as input or output
+ * \param __ioflag type of redirection
+ * \return int return 0 if esetup was succesful & -1 if an error occured 
+ * \todo remove duo_stdout_to_stdin already done on handle_job
+ */
+int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int append, int dup_stdout_to_stdin, int __ioflag)
+{
+    int err = 0;
+    // <
+    if(__ioflag == IO_IN)
+    {
+         err = posix_spawn_file_actions_addopen(fa, STDIN_FILENO, iored, O_RDONLY, 0);
+        if(err != 0) printf("Could not open %s, reading from stdin No such file or directory", iored);
+
+    }
+    
+    // >
+    else if (__ioflag == IO_OUT) 
+    {
+        if(append)
+        {
+           err= posix_spawn_file_actions_addopen(fa, STDOUT_FILENO, iored, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP);
+           
+
+        }
+        else
+        {
+            err = posix_spawn_file_actions_addopen(fa, STDOUT_FILENO, iored, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP);
+            
+        }
+        //posix_spawn_file_actions_addclose(fa, STDOUT_FILENO); 
+    }
+   
+    if(dup_stdout_to_stdin)
+    {
+        posix_spawn_file_actions_adddup2(fa, STDOUT_FILENO, STDERR_FILENO);
+    }
+    
+    return err;
+
 }
 
 /**
@@ -569,7 +775,7 @@ int handle_job(struct ast_pipeline *pipe)
  * \return int 0 if process is succesfully run, -1 if process fails
  *
  */
-int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
+int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg, posix_spawn_file_actions_t* fa)
 {
     posix_spawnattr_t attr;
     // intialize poxis_spawn attributes
@@ -608,7 +814,8 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
         return -1;
     }
     // runs the process if return != 0 the process failed to run
-    if (posix_spawnp(pid, argv[0], NULL, &attr, argv, environ) != 0)
+    
+    if (posix_spawnp(pid, argv[0], fa, &attr, argv, environ) != 0)
     {
         printf("%s: No such file or directory\n", argv[0]);
         return -1;
@@ -623,9 +830,9 @@ int _posix_spawn_run(pid_t *pid, pid_t pgid, char **argv, bool leader, bool fg)
  * -fg brings a background or stopped job to the foreground given jid
  * -bg starts a stopped job into the background given jid
  * -stop stops a running job given the jid
- * -
- *
- * \param pipe
+ * -exit exits out of the program
+ * 
+ * \param pipe 
  * \return int 0 if it's a bultin command or -1 if it's not
  * \todo clean up bg command, add exit command
  */
@@ -720,6 +927,11 @@ int handle_builtin(struct ast_pipeline *pipe)
             printf("    %d %s\n", i, historyList[i]->line);
         }
     }
+    else if(strcmp("exit", commands ->argv[0]) == 0)
+    {
+        delete_dead_jobs();
+        exit(EXIT_SUCCESS);
+    }
     else
     {
         return -1;
@@ -740,12 +952,12 @@ void delete_dead_jobs()
         }
         if (jid2job[i]->num_processes_alive == 0)
         {
+            if(jid2job[i] -> status == DONE) printf("[%d]\t%s\t\t\n", jid2job[i]->jid, get_status(jid2job[i]->status));;
             delete_job(jid2job[i]);
         }
     }
 }
 
-// when to block and unblock
-//  what is the bg command used for
-//  stop vs kill?
-// terminal state/ shoudl you save termstate for every process
+
+
+

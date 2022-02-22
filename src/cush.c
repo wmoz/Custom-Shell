@@ -570,10 +570,8 @@ int handle_job(struct ast_pipeline *pipe)
         {
             fail = true;
             delete_job(curJob);
-        }
-       
-            
-            
+            break;
+        }  
         // run only after first command
         if (e == list_begin(&pipe->commands))
         {
@@ -593,7 +591,10 @@ int handle_job(struct ast_pipeline *pipe)
     }
     else
     {
-        if(!fail)printf("[%d] %d\n", curJob -> jid, curJob -> pgid);
+        if(!fail)
+        {
+            printf("[%d] %d\n", curJob -> jid, curJob -> pgid);
+        }
     }
     signal_unblock(SIGCHLD);
     posix_spawn_file_actions_destroy(&fa);

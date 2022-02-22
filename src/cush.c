@@ -38,7 +38,7 @@ static void handle_child_status(pid_t pid, int status);
 struct job *_get_job_from_pid(pid_t pid);
 int handle_builtin(struct ast_pipeline *pipe);
 void delete_dead_jobs(void);
-int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int __ioflag);
+int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int append, int dup_stdout_to_stdin, int __ioflag);
 int _close_fds(int* fds, size_t length);
 int _set_up_pipe(posix_spawn_file_actions_t* fa, int* newfds, int iteration, int cmd_len);
 int* _create_pipes(int num);
@@ -69,6 +69,7 @@ enum job_status
     STOPPED,       /* job is stopped via SIGSTOP */
     NEEDSTERMINAL, /* job is stopped because it was a background job
                       and requires exclusive terminal access */
+    DONE            /* Job in the background has finished */ 
 };
 
 struct job
@@ -164,6 +165,8 @@ get_status(enum job_status status)
         return "Stopped";
     case NEEDSTERMINAL:
         return "Stopped (tty)";
+    case DONE:
+        return "Done";
     default:
         return "Unknown";
     }
@@ -364,6 +367,11 @@ handle_child_status(pid_t pid, int status)
                 termstate_give_terminal_back_to_shell();
             }
         }
+        else if(jobNeeded -> status == BACKGROUND && jobNeeded -> num_processes_alive == 1)
+        {
+            jobNeeded -> status = DONE;
+        }
+
         jobNeeded->num_processes_alive--;
     }
     // user terminates process
@@ -437,7 +445,7 @@ int main(int ac, char *av[])
         char *prompt = isatty(0) ? build_prompt() : NULL;
         char *cmdline = readline(prompt);
         free(prompt);
-        delete_dead_jobs();
+        
 
         if (cmdline == NULL) /* User typed EOF */
             break;
@@ -453,13 +461,17 @@ int main(int ac, char *av[])
             continue;
         }
         struct list_elem *e = list_begin(&cline->pipes);
-        struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
-        if(handle_builtin(pipe) == 0) continue;
-       
-        
-        handle_job(pipe);
-       // ast_command_line_print(cline);      /* Output a representation of
+        for(; e != list_end(&cline -> pipes); e = list_next(e))
+        {
+            struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
+            if(handle_builtin(pipe) == 0) continue;
+            handle_job(pipe);
+
+        }
+
+        //ast_command_line_print(cline);      /* Output a representation of
         //                                        the entered command line */
+        delete_dead_jobs();
 
         /* Free the command line.
          * This will free the ast_pipeline objects still contained
@@ -528,7 +540,7 @@ int handle_job(struct ast_pipeline *pipe)
         // handles io redirecting for input file
         if(pipe->iored_input != NULL) 
         {
-            if(_set_up_io(&fa, pipe -> iored_input,  IO_IN) != 0)
+            if(_set_up_io(&fa, pipe -> iored_input, pipe ->append_to_output, cmd -> dup_stderr_to_stdout, IO_IN) != 0)
             {
                 posix_spawn_file_actions_init(&fa);
                 
@@ -538,7 +550,7 @@ int handle_job(struct ast_pipeline *pipe)
         //handles io redirecting for output file
         if(pipe->iored_output != NULL)
         {
-            if(_set_up_io(&fa,pipe -> iored_output,  IO_OUT) != 0)
+            if(_set_up_io(&fa,pipe -> iored_output, pipe ->append_to_output, cmd ->dup_stderr_to_stdout,  IO_OUT) != 0)
                 posix_spawn_file_actions_init(&fa);
 
 
@@ -549,6 +561,10 @@ int handle_job(struct ast_pipeline *pipe)
             _set_up_pipe(&fa,fds,itr,cmd_len);
             itr++;
         } 
+        if(cmd ->dup_stderr_to_stdout)
+        {
+            posix_spawn_file_actions_adddup2(&fa, STDOUT_FILENO, STDERR_FILENO);
+        }
         //handles running fg and bg process
         if (_posix_spawn_run(&pid, pgid, cmd->argv, leader, !pipe->bg_job, &fa) != 0)
         {
@@ -676,10 +692,12 @@ int _close_fds(int* fds, size_t length)
  * \param iored file name that will be used as input or output
  * \param __ioflag type of redirection
  * \return int return 0 if esetup was succesful & -1 if an error occured 
+ * \todo remove duo_stdout_to_stdin already done on handle_job
  */
-int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int __ioflag)
+int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int append, int dup_stdout_to_stdin, int __ioflag)
 {
     int err = 0;
+    // <
     if(__ioflag == IO_IN)
     {
          err = posix_spawn_file_actions_addopen(fa, STDIN_FILENO, iored, O_RDONLY, 0);
@@ -687,15 +705,27 @@ int _set_up_io( posix_spawn_file_actions_t* fa, char* iored, int __ioflag)
 
     }
     
-    // Concern:: when running cat t > test and t doesn't existed cat output goes to test not terminal
+    // >
     else if (__ioflag == IO_OUT) 
     {
-        err = posix_spawn_file_actions_addopen(fa, STDOUT_FILENO, iored, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP);
-        
+        if(append)
+        {
+           err= posix_spawn_file_actions_addopen(fa, STDOUT_FILENO, iored, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP);
+           
+
+        }
+        else
+        {
+            err = posix_spawn_file_actions_addopen(fa, STDOUT_FILENO, iored, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP);
+            
+        }
         //posix_spawn_file_actions_addclose(fa, STDOUT_FILENO); 
     }
    
-    //if(posix_spawn_file_actions_adddup2(fa,STDOUT_FILENO, STDERR_FILENO)!=0 )printf("error\n");
+    if(dup_stdout_to_stdin)
+    {
+        posix_spawn_file_actions_adddup2(fa, STDOUT_FILENO, STDERR_FILENO);
+    }
     
     return err;
 
@@ -864,6 +894,7 @@ int handle_builtin(struct ast_pipeline *pipe)
     }
     else if(strcmp("exit", commands ->argv[0]) == 0)
     {
+        delete_dead_jobs();
         exit(EXIT_SUCCESS);
     }
     else
@@ -888,7 +919,7 @@ void delete_dead_jobs()
         }
         if(jid2job[i] -> num_processes_alive == 0)
         {
-            print_job(jid2job[i]);
+            if(jid2job[i] -> status == DONE) printf("[%d]\t%s\t\t\n", jid2job[i]->jid, get_status(jid2job[i]->status));;
             delete_job(jid2job[i]);
         }
     }

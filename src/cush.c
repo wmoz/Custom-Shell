@@ -163,6 +163,7 @@ delete_job(struct job *job)
     int jid = job->jid;
     assert(jid != -1);
     jid2job[jid]->jid = -1;
+    list_remove(&job->elem);
     jid2job[jid] = NULL;
     ast_pipeline_free(job->pipe);
     free(job);
@@ -516,6 +517,7 @@ int main(int ac, char *av[])
          */
         free(cline);
     }
+
     return 0;
 }
 

@@ -9,7 +9,8 @@
 shell = "./cush"
 
 # the prompt printed by your shell, as a regular expression
-prompt = "cush>"
+prompt = "<[^@]*@[^>]*>\$"
+#prompt = "<@[^\.]*\.rlogin in [^>]*>"
 
 # change your prompt once you have customized your shell.
 # Here's an example

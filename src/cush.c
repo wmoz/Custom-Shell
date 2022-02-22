@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <spawn.h>
 #include <pwd.h>
+#include <fcntl.h>
 
 #include <readline/history.h>
 

@@ -844,7 +844,7 @@ int handle_builtin(struct ast_pipeline *pipe)
     struct ast_command *commands = list_entry(list_begin(&pipe->commands), struct ast_command, elem);
     if (strcmp("jobs", commands->argv[0]) == 0)
     {
-        for (int i = 0; i < MAXJOBS; i++)
+        for(int i = 0; i < MAXJOBS; i++)
         {
             if (jid2job[i] == NULL)
                 continue;

@@ -1,6 +1,5 @@
 # Test class for the more complex builtin "history"
 #     1. making sure it prints out the history as expected
-#     2. making sure that commands such as !! and !l work correctly
 
 #import sys, imp, atexit, pexpect, signal, time, threading
 from testutils import *
